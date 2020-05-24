@@ -6,6 +6,7 @@ import tink.core.Outcome;
 import sys.net.Host;
 import sys.net.Socket;
 import tink.core.Future;
+import tink.core.Promise;
 
 using StringTools;
 
@@ -91,6 +92,21 @@ typedef Stats = {
     var ?response:Response;
 }
 
+typedef ReplayGainStatus = {
+    var ?replayGainMode:ReplayGainMode;
+    var ?response:Response;
+}
+
+typedef SongID = {
+    var ?id:Int;
+    var ?response:Response;
+}
+
+typedef PosOrRange = {
+    var pos:Int;
+    var ?end:Int;
+}
+
 class MusicPD
 {
     var socket:Socket;
@@ -100,7 +116,7 @@ class MusicPD
         socket = _socket;
     }
 
-    public static function connect(host:String, port:Int = 6600):Surprise<MusicPD, Error>
+    public static function connect(host:String, port:Int = 6600):Promise<MusicPD>
     {
         var socket = new Socket();
         return Future.async(function(_callback) {
@@ -150,7 +166,7 @@ class MusicPD
         return Error.asError(message);
     }
 
-    private function runCommand(command:String, onPair:(pair:NameValuePair)->Void = null):Surprise<Response, Error>
+    private function runCommand(command:String, onPair:(pair:NameValuePair)->Void = null):Promise<Response>
     {
         socket.output.writeString(command + '\n');
         return Future.async(function(_callback) {
@@ -178,12 +194,12 @@ class MusicPD
         });
     }
 
-    public function clearError():Surprise<Response, Error>
+    public function clearError():Promise<Response>
     {
         return runCommand('clearerror');
     }
 
-    public function getCurrentSong():Surprise<SongInfo, Error>
+    public function getCurrentSong():Promise<SongInfo>
     {
         return Future.async(function(_callback) {
             var songInfo:SongInfo = {};
@@ -218,8 +234,6 @@ class MusicPD
                             songInfo.pos = Std.parseFloat(pair.value);
                         case 'id':
                             songInfo.id = Std.parseInt(pair.value);
-                        default:
-                            try(pair.name);
                     }
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
@@ -237,7 +251,7 @@ class MusicPD
         });
     }
 
-    public function getStatus():Surprise<Status, Error>
+    public function getStatus():Promise<Status>
     {
         return Future.async(function(_callback) {
             var status:Status = {};
@@ -330,7 +344,7 @@ class MusicPD
         });
     }
 
-    public function getStats():Surprise<Stats, Error>
+    public function getStats():Promise<Stats>
     {
         return Future.async(function(_callback) {
             var stats:Stats = {};
@@ -366,37 +380,37 @@ class MusicPD
         });
     }
 
-    public function setConsume(consume:Bool):Surprise<Response, Error>
+    public function setConsume(consume:Bool):Promise<Response>
     {
         return runCommand('consume ${displayBool(consume)}');
     }
 
-    public function setCrossfade(seconds:Int):Surprise<Response, Error>
+    public function setCrossfade(seconds:Int):Promise<Response>
     {
         return runCommand('crossfade $seconds');
     }
 
-    public function setMixRampDB(db:Int):Surprise<Response, Error>
+    public function setMixRampDB(db:Int):Promise<Response>
     {
         return runCommand('mixrampdb $db');
     }
 
-    public function setMixRampDelay(delay:Int):Surprise<Response, Error>
+    public function setMixRampDelay(delay:Int):Promise<Response>
     {
         return runCommand('mixrampdelay $delay');
     }
 
-    public function setRandom(random:Bool):Surprise<Response, Error>
+    public function setRandom(random:Bool):Promise<Response>
     {
         return runCommand('random ${displayBool(random)}');
     }
 
-    public function setRepeat(repeat:Bool):Surprise<Response, Error>
+    public function setRepeat(repeat:Bool):Promise<Response>
     {
         return runCommand('repeat ${displayBool(repeat)}');
     }
 
-    public function setVolume(volume:Int):Surprise<Response, Error>
+    public function setVolume(volume:Int):Promise<Response>
     {
         if (volume < 0 || volume > 100) {
             Future.sync(Failure(Error.asError('Invalid volume: $volume')));
@@ -404,7 +418,7 @@ class MusicPD
         return runCommand('setvol $volume');
     }
 
-    public function setSingle(singleState:SingleState):Surprise<Response, Error>
+    public function setSingle(singleState:SingleState):Promise<Response>
     {
         var singleStateString = switch singleState {
             case SingleOff:
@@ -417,7 +431,7 @@ class MusicPD
         return runCommand('single $singleStateString');
     }
 
-    public function setReplayGainMode(replayGainMode:ReplayGainMode):Surprise<Response, Error>
+    public function setReplayGainMode(replayGainMode:ReplayGainMode):Promise<Response>
     {
         var replayGainModeString = switch replayGainMode {
             case ReplayGainOff:
@@ -430,5 +444,164 @@ class MusicPD
                 'auto';
         };
         return runCommand('replay_gain_mode $replayGainModeString');
+    }
+
+    public function getReplayGainStatus():Promise<ReplayGainStatus>
+    {
+        return Future.async(function(_callback) {
+            var replayGainStatus:ReplayGainStatus = {};
+            runCommand('replay_gain_status', function(pair) {
+                try {
+                    switch pair.name {
+                        case 'replay_gain_mode':
+                            replayGainStatus.replayGainMode = switch pair.value {
+                                case 'off':
+                                    ReplayGainOff;
+                                case 'track':
+                                    ReplayGainTrack;
+                                case 'album':
+                                    ReplayGainAlbum;
+                                case 'auto':
+                                    ReplayGainAuto;
+                                default:
+                                    throw 'Unknown replay gain mode: ${pair.value}';
+                            }
+                    }
+                } catch(e) {
+                    _callback(Failure(Error.asError(e)));
+                }
+            }).handle(function(outcome) {
+                switch outcome {
+                    case Success(response):
+                        replayGainStatus.response = response;
+                        _callback(Success(replayGainStatus));
+                    case Failure(error):
+                        _callback(Failure(error));
+                }
+            });
+        });
+    }
+
+    public function next():Promise<Response>
+    {
+        return runCommand('next');
+    }
+
+    public function setPause(pause:Bool):Promise<Response>
+    {
+        return runCommand('pause ${displayBool(pause)}');
+    }
+
+    public function play(songPos:Null<Int> = null):Promise<Response>
+    {
+        var arg = if (songPos != null) {
+            ' $songPos';
+        } else {
+            '';
+        }
+        return runCommand('play$arg');
+    }
+
+    public function playID(songID:Int):Promise<Response>
+    {
+        var arg = if (songID != null) {
+            ' $songID';
+        } else {
+            '';
+        }
+        return runCommand('playid$arg');
+    }
+
+    public function previous():Promise<Response>
+    {
+        return runCommand('previous');
+    }
+
+    public function seek(songPos:Int, time:Float):Promise<Response>
+    {
+        return runCommand('seek $songPos $time');
+    }
+
+    public function seekID(songID:Int, time:Float):Promise<Response>
+    {
+        return runCommand('seekid $songID $time');
+    }
+
+    public function seekCur(time:Float, relative:Bool = false):Promise<Response>
+    {
+        var timeString = '$time';
+        if (relative && time >= 0.0) {
+            timeString = '+' + timeString;
+        }
+        return runCommand('seekcur $timeString');
+    }
+
+    public function stop():Promise<Response>
+    {
+        return runCommand('stop');
+    }
+
+    public function add(uri:String):Promise<Response>
+    {
+        return runCommand('add $uri');
+    }
+
+    public function addID(uri:String):Promise<SongID>
+    {
+        return Future.async(function(_callback) {
+            var songID:SongID = {};
+            runCommand('addid $uri', function(pair) {
+                try {
+                    switch pair.name {
+                        case 'Id':
+                            songID.id = Std.parseInt(pair.value);
+                    }
+                } catch(e) {
+                    _callback(Failure(Error.asError(e)));
+                }
+            }).handle(function(outcome) {
+                switch outcome {
+                    case Success(response):
+                        songID.response = response;
+                        _callback(Success(songID));
+                    case Failure(error):
+                        _callback(Failure(error));
+                }
+            });
+        });
+    }
+
+    public function clear():Promise<Response>
+    {
+        return runCommand('clear');
+    }
+
+    private function argFromPosOrRange(posOrRange:PosOrRange):String
+    {
+        var arg = '${posOrRange.pos}';
+        if (posOrRange.end != null) {
+            arg += ':${posOrRange.end}';
+        }
+        return arg;
+    }
+
+    public function delete(posOrRange:PosOrRange):Promise<Response>
+    {
+        return runCommand('delete ${argFromPosOrRange(posOrRange)}');
+    }
+
+    public function deleteID(songID:Int):Promise<Response>
+    {
+        return runCommand('deleteid $songID');
+    }
+
+    public function move(posOrRange:PosOrRange, toPos:Int):Promise<Response>
+    {
+        return runCommand('move ${argFromPosOrRange(posOrRange)} $toPos');
+    }
+
+    public function moveID(fromID:Int, toPos:Int):Promise<Response>
+    {
+        return runCommand('moveid $fromID $toPos');
     }
 }

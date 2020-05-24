@@ -15,7 +15,7 @@ class ConnectionTest
         MusicPD.connect('192.168.1.166').handle(function(outcome) {
             switch outcome {
                 case Success(musicPD):
-                    musicPD.setReplayGainMode(ReplayGainAuto);
+                    musicPD.getReplayGainStatus();
                 case Failure(error):
                     trace(error);
             }

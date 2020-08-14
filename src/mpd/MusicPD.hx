@@ -37,6 +37,24 @@ enum ReplayGainMode
     ReplayGainAuto;
 }
 
+enum abstract Subsystem(String)
+{
+    var Database = 'database';
+    var Update = 'update';
+    var StoredPlaylist = 'stored_playlist';
+    var Playlist = 'playlist';
+    var Player = 'player';
+    var Mixer = 'mixer';
+    var Output = 'output';
+    var Options = 'options';
+    var Partition = 'partition';
+    var Sticker = 'sticker';
+    var Subscription = 'subscription';
+    var Message = 'message';
+    var Neighbor = 'neighbor';
+    var Mount = 'mount';
+}
+
 typedef Status = {
     var ?partition:String;
     var ?volume:Int;
@@ -187,7 +205,7 @@ class MusicPD
                     return;
                 }
                 var namePair = {name: namePairMatcher.matched(1), value: namePairMatcher.matched(2)};
-                response.values.push(namePair);
+                response.values.push(namePair); 
                 if (onPair != null) onPair(namePair);
             }
             _callback(Failure(Error.asError("Don't know what to do")));
@@ -228,43 +246,6 @@ class MusicPD
         }
     }
 
-    public function find(query:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
-    {
-        return Future.async((_callback) -> {
-            var songInfos = new Array<SongInfo>();
-            var firstTag:String = '';
-            var songInfo:SongInfo = {};
-            var command = 'find "$query"';
-            if (sort != null) {
-                command += ' $sort';
-            }
-            if (window != null) {
-                command += ' ${argFromPosOrRange(window)}';
-            }
-            runCommand(command, (pair) -> {
-                if (firstTag == '') {
-                    firstTag = pair.name;
-                }
-                else if (firstTag == pair.name) {
-                    songInfos.push(songInfo);
-                    songInfo = {};
-                }
-                try {
-                    updateSongInfoFromPair(songInfo, pair);
-                } catch(e) {
-                    _callback(Failure(Error.asError(e)));
-                }
-            }).handle((outcome) -> {
-                switch outcome {
-                    case Success(_):
-                        _callback(Success(songInfos));
-                    case Failure(failure):
-                        _callback(Failure(failure));
-                }
-            });
-        });
-    }
-
     public function clearError():Promise<Response>
     {
         return runCommand('clearerror');
@@ -290,6 +271,17 @@ class MusicPD
                 }
             });
         });
+    }
+
+    public function idle(?subsystems:Array<Subsystem>):Promise<Response>
+    {
+        var command = 'idle';
+        if (subsystems != null) {
+            for (subsystem in subsystems) {
+                command += ' $subsystem';
+            }
+        }
+        return runCommand(command);
     }
 
     public function getStatus():Promise<Status>
@@ -648,5 +640,86 @@ class MusicPD
     public function moveID(fromID:Int, toPos:Int):Promise<Response>
     {
         return runCommand('moveid $fromID $toPos');
+    }
+
+    private function finder(command:String, ?filter:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
+    {
+        return Future.async((_callback) -> {
+            var songInfos = new Array<SongInfo>();
+            var firstTag:String = '';
+            var songInfo:SongInfo = {};
+            if (filter != null) {
+                command += ' "$filter"';
+            }
+            if (sort != null) {
+                command += ' $sort';
+            }
+            if (window != null) {
+                command += ' ${argFromPosOrRange(window)}';
+            }
+            runCommand(command, (pair) -> {
+                if (firstTag == '') {
+                    firstTag = pair.name;
+                }
+                else if (firstTag == pair.name) {
+                    songInfos.push(songInfo);
+                    songInfo = {};
+                }
+                try {
+                    updateSongInfoFromPair(songInfo, pair);
+                } catch(e) {
+                    _callback(Failure(Error.asError(e)));
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(songInfos));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function findInPlaylist(filter:String):Promise<Array<SongInfo>>
+    {
+        return finder('playlistfind', filter);
+    }
+
+    public function getPlaylist(?songID:Int):Promise<Array<SongInfo>>
+    {
+        var command = 'playlistid';
+        if (songID != null) command += ' $songID';
+        return finder(command);
+    }
+
+    public function getPlaylistInfo(posOrRange:PosOrRange):Promise<Array<SongInfo>>
+    {
+        var command = 'playlistinfo ${argFromPosOrRange(posOrRange)}';
+        return finder(command);
+    }
+
+    public function searchInPlaylist(filter:String):Promise<Array<SongInfo>>
+    {
+        return finder('playlistsearch', filter);
+    }
+
+    ///// missing stuff here
+
+    public function find(filter:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
+    {
+        return finder('find', filter, sort, window);
+    }
+
+    public function findAndAdd(filter:String, ?sort:String, ?window:PosOrRange):Promise<Response>
+    {
+        var command = 'findadd "$filter"';
+        if (sort != null) {
+            command += ' $sort';
+        }
+        if (window != null) {
+            command += ' ${argFromPosOrRange(window)}';
+        }
+        return runCommand(command);
     }
 }

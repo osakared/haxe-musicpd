@@ -1,0 +1,19 @@
+{
+  "name": "musicpd",
+  "url" : "https://haxe-grig.gitlab.io/grig/",
+  "license": "MIT",
+  "tags": [
+    "audio",
+    "music"
+  ],
+  "description": "Haxe-based client for musicpd https://www.musicpd.org/",
+  "classPath": "src",
+  "contributors": [
+    "thomasjwebb"
+  ],
+  "releasenote": "Initial release",
+  "version": "0.0.1",
+  "dependencies": {
+    "tink_core": "1.26.0"
+  }
+}

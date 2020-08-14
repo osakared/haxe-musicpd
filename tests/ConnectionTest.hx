@@ -15,7 +15,7 @@ class ConnectionTest
         MusicPD.connect('localhost').handle((outcome) -> {
             switch outcome {
                 case Success(musicPD):
-                    musicPD.getPlaylistInfo({pos: 0}).handle((response) -> {
+                    musicPD.getPlaylists().handle((response) -> {
                         switch response {
                             case Success(songs):
                                 trace(songs);

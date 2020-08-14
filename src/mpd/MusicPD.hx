@@ -99,6 +99,11 @@ typedef SongInfo = {
     var ?response:Response;
 }
 
+typedef PlaylistInfo = {
+    var ?name:String;
+    var ?lastModified:Date;
+}
+
 typedef Stats = {
     var ?artists:Int;
     var ?albums:Int;
@@ -123,6 +128,21 @@ typedef SongID = {
 typedef PosOrRange = {
     var pos:Int;
     var ?end:Int;
+}
+
+typedef Range = {
+    var start:Int;
+    var end:Int;
+}
+
+typedef TimeRange = {
+    var start:Float;
+    var end:Float;
+}
+
+typedef PosAndID = {
+    var pos:Int;
+    var id:Int;
 }
 
 class MusicPD
@@ -282,6 +302,11 @@ class MusicPD
             }
         }
         return runCommand(command);
+    }
+
+    public function cancelIdle():Void
+    {
+        socket.output.writeString('noidle\n');
     }
 
     public function getStatus():Promise<Status>
@@ -622,6 +647,11 @@ class MusicPD
         return arg;
     }
 
+    private function argFromRange(range:Range):String
+    {
+        return '${range.start}:${range.end}';
+    }
+
     public function delete(posOrRange:PosOrRange):Promise<Response>
     {
         return runCommand('delete ${argFromPosOrRange(posOrRange)}');
@@ -660,9 +690,9 @@ class MusicPD
             runCommand(command, (pair) -> {
                 if (firstTag == '') {
                     firstTag = pair.name;
+                    songInfos.push(songInfo);
                 }
                 else if (firstTag == pair.name) {
-                    songInfos.push(songInfo);
                     songInfo = {};
                 }
                 try {
@@ -702,6 +732,204 @@ class MusicPD
     public function searchInPlaylist(filter:String):Promise<Array<SongInfo>>
     {
         return finder('playlistsearch', filter);
+    }
+
+    public function getPlaylistChanges(version:Int, ?posOrRange:PosOrRange):Promise<Array<SongInfo>>
+    {
+        return finder('plchanges $version', null, null, posOrRange);
+    }
+
+    public function getPlaylistChangesIDs(version:Int, ?posOrRange:PosOrRange):Promise<Array<PosAndID>>
+    {
+        return Future.async((_callback) -> {
+            var posAndIDs = new Array<PosAndID>();
+            var firstTag:String = '';
+            var posAndID:PosAndID = {pos: 0, id: 0};
+            var command = 'plchangesposid $version';
+            if (posOrRange != null) {
+                command += ' ${argFromPosOrRange(posOrRange)}';
+            }
+            runCommand(command, function(pair) {
+                if (firstTag == '') {
+                    firstTag = pair.name;
+                    posAndIDs.push(posAndID);
+                }
+                else if (firstTag == pair.name) {
+                    posAndID = {pos: 0, id: 0};
+                }
+                try {
+                    switch pair.name.toLowerCase() {
+                        case 'cpos':
+                            posAndID.pos = Std.parseInt(pair.value);
+                        case 'id':
+                            posAndID.id = Std.parseInt(pair.value);
+                    }
+                } catch(e) {
+                    _callback(Failure(Error.asError(e)));
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(posAndIDs));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function setPriority(priority:Int, range:Range):Promise<Response>
+    {
+        return runCommand('prio $priority ${argFromRange(range)}');
+    }
+
+    public function setPriorityForID(priority:Int, ids:Array<Int>):Promise<Response>
+    {
+        var command = 'prioid $priority';
+        for (id in ids) {
+            command += ' $id';
+        }
+        return runCommand(command);
+    }
+
+    public function setRangeForID(id:Int, ?timeRange:TimeRange):Promise<Response>
+    {
+        var command = 'rangeid $id ';
+        if (timeRange == null) command += ':';
+        else command += '${timeRange.start}:${timeRange.end}';
+        return runCommand(command);
+    }
+
+    public function shuffer(?range:Range):Promise<Response>
+    {
+        var command = 'shuffle';
+        if (range != null) {
+            command += ' ${argFromRange(range)}';
+        }
+        return runCommand(command);
+    }
+
+    public function swap(song1:Int, song2:Int):Promise<Response>
+    {
+        return runCommand('swap $song1 $song2');
+    }
+
+    public function swapSongIDs(id1:Int, id2:Int):Promise<Response>
+    {
+        return runCommand('swapid $id1 $id2');
+    }
+
+    public function setTag(id:Int, tag:String, value:String):Promise<Response>
+    {
+        return runCommand('addtagid $id $tag $value');
+    }
+
+    public function clearTag(id:Int, ?tag:String):Promise<Response>
+    {
+        var command = 'cleartagid $id';
+        if (tag != null) {
+            command += ' $tag';
+        }
+        return runCommand(command);
+    }
+
+    public function getPlaylistListing(name:String):Promise<Array<String>>
+    {
+        return Future.async((_callback) -> {
+            var files = new Array<String>();
+            runCommand('listplaylist $name', function(pair) {
+                if (pair.name.toLowerCase() == 'file') {
+                    files.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(files));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function getPlaylistInfoListing(name:String):Promise<Array<SongInfo>>
+    {
+        return finder('listplaylistinfo $name');
+    }
+
+    public function getPlaylists():Promise<Array<PlaylistInfo>>
+    {
+        return Future.async((_callback) -> {
+            var playlistInfos = new Array<PlaylistInfo>();
+            var firstTag:String = '';
+            var playlistInfo:PlaylistInfo = {};
+            runCommand('listplaylists', function(pair) {
+                if (firstTag == '') {
+                    firstTag = pair.name;
+                    playlistInfos.push(playlistInfo);
+                }
+                else if (firstTag == pair.name) {
+                    playlistInfo = {};
+                }
+                switch pair.name.toLowerCase() {
+                    case 'playlist':
+                        playlistInfo.name = pair.value;
+                    case 'last-modified':
+                        playlistInfo.lastModified = parseDate(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(playlistInfos));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function loadPlaylist(name:String, ?range:Range):Promise<Response>
+    {
+        var command = 'load $name';
+        if (range != null) {
+            command += ' ${argFromRange(range)}';
+        }
+        return runCommand(command);
+    }
+
+    public function addURIToPlaylist(name:String, uri:String):Promise<Response>
+    {
+        return runCommand('playlistadd $name $uri');
+    }
+
+    public function clearPlaylist(name:String):Promise<Response>
+    {
+        return runCommand('playlistclear $name');
+    }
+
+    public function deleteSongFromPlaylist(name:String, pos:Int):Promise<Response>
+    {
+        return runCommand('playlistdelete $name $pos');
+    }
+
+    public function moveInPlaylist(name:String, from:Int, to:Int):Promise<Response>
+    {
+        return runCommand('playlistmove $name $from $to');
+    }
+
+    public function renamePlaylist(name:String, newName:String):Promise<Response>
+    {
+        return runCommand('rename $name $newName');
+    }
+
+    public function deletePlaylist(name:String):Promise<Response>
+    {
+        return runCommand('rm $name');
+    }
+
+    public function savePlaylist(name:String):Promise<Response>
+    {
+        return runCommand('save $name');
     }
 
     ///// missing stuff here

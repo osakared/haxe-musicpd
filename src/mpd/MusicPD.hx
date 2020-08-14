@@ -228,13 +228,20 @@ class MusicPD
         }
     }
 
-    public function find(query:String):Promise<Array<SongInfo>>
+    public function find(query:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
     {
         return Future.async((_callback) -> {
             var songInfos = new Array<SongInfo>();
             var firstTag:String = '';
             var songInfo:SongInfo = {};
-            runCommand('find "$query"', (pair) -> {
+            var command = 'find "$query"';
+            if (sort != null) {
+                command += ' $sort';
+            }
+            if (window != null) {
+                command += ' ${argFromPosOrRange(window)}';
+            }
+            runCommand(command, (pair) -> {
                 if (firstTag == '') {
                     firstTag = pair.name;
                 }
@@ -580,11 +587,15 @@ class MusicPD
         return runCommand('add $uri');
     }
 
-    public function addID(uri:String):Promise<SongID>
+    public function addID(uri:String, ?position:Int):Promise<SongID>
     {
         return Future.async((_callback) -> {
             var songID:SongID = {};
-            runCommand('addid $uri', function(pair) {
+            var command = 'addid $uri'; 
+            if (position != null) {
+                command += ' $position';
+            }
+            runCommand(command, function(pair) {
                 try {
                     switch pair.name {
                         case 'Id':

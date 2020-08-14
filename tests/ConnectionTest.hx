@@ -12,10 +12,17 @@ class ConnectionTest
 
     public function testConnection()
     {
-        MusicPD.connect('192.168.1.166').handle(function(outcome) {
+        MusicPD.connect('localhost').handle((outcome) -> {
             switch outcome {
                 case Success(musicPD):
-                    musicPD.getReplayGainStatus();
+                    musicPD.find('(Album == \\"Just A Body EP\\")').handle((response) -> {
+                        switch response {
+                            case Success(songs):
+                                trace(songs);
+                            case Failure(err):
+                                trace(err);
+                        }
+                    });
                 case Failure(error):
                     trace(error);
             }

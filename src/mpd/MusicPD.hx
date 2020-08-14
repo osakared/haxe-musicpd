@@ -119,7 +119,7 @@ class MusicPD
     public static function connect(host:String, port:Int = 6600):Promise<MusicPD>
     {
         var socket = new Socket();
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             // need to handle exception and also work asynchronously in hxnodejs
             try {
                 socket.connect(new Host(host), port);
@@ -169,7 +169,7 @@ class MusicPD
     private function runCommand(command:String, onPair:(pair:NameValuePair)->Void = null):Promise<Response>
     {
         socket.output.writeString(command + '\n');
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var response = new Response();
             var namePairMatcher = new EReg('^(.+):\\s+(.*)$', '');
             while (true) {
@@ -194,6 +194,70 @@ class MusicPD
         });
     }
 
+    private function updateSongInfoFromPair(songInfo:SongInfo, pair:NameValuePair):Void
+    {
+        switch pair.name.toLowerCase() {
+            case 'file':
+                songInfo.file = pair.value;
+            case 'last-modified':
+                songInfo.lastModified = parseDate(pair.value);
+            case 'artist':
+                songInfo.artist = pair.value;
+            case 'albumartist':
+                songInfo.albumArtist = pair.value;
+            case 'title':
+                songInfo.title = pair.value;
+            case 'album':
+                songInfo.album = pair.value;
+            case 'track':
+                songInfo.track = Std.parseInt(pair.value);
+            case 'date':
+                songInfo.date = pair.value;
+            case 'genre':
+                songInfo.genre = pair.value;
+            case 'disc':
+                songInfo.disc = Std.parseInt(pair.value);
+            case 'time':
+                songInfo.time = Std.parseInt(pair.value);
+            case 'duration':
+                songInfo.duration = Std.parseFloat(pair.value);
+            case 'pos':
+                songInfo.pos = Std.parseFloat(pair.value);
+            case 'id':
+                songInfo.id = Std.parseInt(pair.value);
+        }
+    }
+
+    public function find(query:String):Promise<Array<SongInfo>>
+    {
+        return Future.async((_callback) -> {
+            var songInfos = new Array<SongInfo>();
+            var firstTag:String = '';
+            var songInfo:SongInfo = {};
+            runCommand('find "$query"', (pair) -> {
+                if (firstTag == '') {
+                    firstTag = pair.name;
+                }
+                else if (firstTag == pair.name) {
+                    songInfos.push(songInfo);
+                    songInfo = {};
+                }
+                try {
+                    updateSongInfoFromPair(songInfo, pair);
+                } catch(e) {
+                    _callback(Failure(Error.asError(e)));
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(songInfos));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
     public function clearError():Promise<Response>
     {
         return runCommand('clearerror');
@@ -201,48 +265,18 @@ class MusicPD
 
     public function getCurrentSong():Promise<SongInfo>
     {
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var songInfo:SongInfo = {};
-            runCommand('currentsong', function(pair) {
+            runCommand('currentsong', (pair) -> {
                 try {
-                    switch pair.name.toLowerCase() {
-                        case 'file':
-                            songInfo.file = pair.value;
-                        case 'last-modified':
-                            songInfo.lastModified = parseDate(pair.value);
-                        case 'artist':
-                            songInfo.artist = pair.value;
-                        case 'albumartist':
-                            songInfo.albumArtist = pair.value;
-                        case 'title':
-                            songInfo.title = pair.value;
-                        case 'album':
-                            songInfo.album = pair.value;
-                        case 'track':
-                            songInfo.track = Std.parseInt(pair.value);
-                        case 'date':
-                            songInfo.date = pair.value;
-                        case 'genre':
-                            songInfo.genre = pair.value;
-                        case 'disc':
-                            songInfo.disc = Std.parseInt(pair.value);
-                        case 'time':
-                            songInfo.time = Std.parseInt(pair.value);
-                        case 'duration':
-                            songInfo.duration = Std.parseFloat(pair.value);
-                        case 'pos':
-                            songInfo.pos = Std.parseFloat(pair.value);
-                        case 'id':
-                            songInfo.id = Std.parseInt(pair.value);
-                    }
+                    updateSongInfoFromPair(songInfo, pair);
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
                 }
-            }).handle(function(outcome) {
+            }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
                         songInfo.response = response;
-                        trace(songInfo);
                         _callback(Success(songInfo));
                     case Failure(error):
                         _callback(Failure(error));
@@ -253,7 +287,7 @@ class MusicPD
 
     public function getStatus():Promise<Status>
     {
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var status:Status = {};
             runCommand('status', function(pair) {
                 try {
@@ -332,7 +366,7 @@ class MusicPD
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
                 }
-            }).handle(function(outcome) {
+            }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
                         status.response = response;
@@ -346,7 +380,7 @@ class MusicPD
 
     public function getStats():Promise<Stats>
     {
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var stats:Stats = {};
             runCommand('stats', function(pair) {
                 try {
@@ -367,7 +401,7 @@ class MusicPD
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
                 }
-            }).handle(function(outcome) {
+            }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
                         stats.response = response;
@@ -448,7 +482,7 @@ class MusicPD
 
     public function getReplayGainStatus():Promise<ReplayGainStatus>
     {
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var replayGainStatus:ReplayGainStatus = {};
             runCommand('replay_gain_status', function(pair) {
                 try {
@@ -470,7 +504,7 @@ class MusicPD
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
                 }
-            }).handle(function(outcome) {
+            }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
                         replayGainStatus.response = response;
@@ -502,7 +536,7 @@ class MusicPD
         return runCommand('play$arg');
     }
 
-    public function playID(songID:Int):Promise<Response>
+    public function playID(songID:Null<Int> = null):Promise<Response>
     {
         var arg = if (songID != null) {
             ' $songID';
@@ -548,7 +582,7 @@ class MusicPD
 
     public function addID(uri:String):Promise<SongID>
     {
-        return Future.async(function(_callback) {
+        return Future.async((_callback) -> {
             var songID:SongID = {};
             runCommand('addid $uri', function(pair) {
                 try {
@@ -559,7 +593,7 @@ class MusicPD
                 } catch(e) {
                     _callback(Failure(Error.asError(e)));
                 }
-            }).handle(function(outcome) {
+            }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
                         songID.response = response;

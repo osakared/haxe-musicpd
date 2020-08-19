@@ -1,5 +1,11 @@
 # haxe-musicpd
 
+If you use lix, you can install the latest version with:
+
+```sh
+lix install gitlab:haxe-grig/haxe-musicpd
+```
+
 ## Todo
 
 - everything from listfiles on

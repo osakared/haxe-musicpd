@@ -39,6 +39,12 @@ enum ReplayGainMode
     ReplayGainAuto;
 }
 
+enum abstract FileSystemEntryType(String)
+{
+    var FileEntry = 'file';
+    var DirectoryEntry = 'directory';
+}
+
 enum abstract Subsystem(String)
 {
     var DatabaseSubsystem = 'database';
@@ -86,6 +92,9 @@ enum abstract Tag(String)
     var MusicBrainzWorkIDTag = 'musicbrainz_workid';
 }
 
+// So I can swap out for a better structure more easily later
+typedef Filter = String;
+
 typedef Status = {
     var ?partition:String;
     var ?volume:Int;
@@ -114,6 +123,7 @@ typedef Status = {
 
 typedef SongInfo = {
     var ?file:String;
+    var ?entryType:FileSystemEntryType;
     var ?lastModified:Date;
     var ?artist:String;
     var ?albumArtist:String;
@@ -180,6 +190,27 @@ typedef CountInfo = {
     var ?group:NameValuePair;
     var ?count:Int;
     var ?playTime:Int;
+}
+
+typedef FileSystemEntry = {
+    var type:FileSystemEntryType;
+    var name:String;
+}
+
+typedef ListResult = {
+    var type:String;
+    var name:String;
+}
+
+class ListResultGroup
+{
+    public var groupType:Null<String> = null;
+    public var groupName:Null<String> = null;
+    public var results = new Array<ListResult>();
+
+    public function new()
+    {
+    }
 }
 
 class MusicPD
@@ -279,6 +310,10 @@ class MusicPD
         switch pair.name.toLowerCase() {
             case 'file':
                 songInfo.file = pair.value;
+                songInfo.entryType = FileEntry;
+            case 'directory':
+                songInfo.file = pair.value;
+                songInfo.entryType = DirectoryEntry;
             case 'last-modified':
                 songInfo.lastModified = parseDate(pair.value);
             case 'artist':
@@ -714,11 +749,10 @@ class MusicPD
         return runCommand('moveid $fromID $toPos');
     }
 
-    private function finder(command:String, ?filter:String, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    private function finder(command:String, ?filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
     {
         return Future.async((_callback) -> {
             var songInfos = new Array<SongInfo>();
-            var firstTag:String = '';
             var songInfo:SongInfo = {};
             if (filter != null) {
                 command += ' "$filter"';
@@ -730,12 +764,9 @@ class MusicPD
                 command += ' ${argFromRange(window)}';
             }
             runCommand(command, (pair) -> {
-                if (firstTag == '') {
-                    firstTag = pair.name;
-                    songInfos.push(songInfo);
-                }
-                else if (firstTag == pair.name) {
+                if (pair.name == 'file' || pair.name == 'directory') {
                     songInfo = {};
+                    songInfos.push(songInfo);
                 }
                 try {
                     updateSongInfoFromPair(songInfo, pair);
@@ -753,7 +784,7 @@ class MusicPD
         });
     }
 
-    public function findInPlaylist(filter:String):Promise<Array<SongInfo>>
+    public function findInPlaylist(filter:Filter):Promise<Array<SongInfo>>
     {
         return finder('playlistfind', filter);
     }
@@ -771,7 +802,7 @@ class MusicPD
         return finder(command);
     }
 
-    public function searchInPlaylist(filter:String):Promise<Array<SongInfo>>
+    public function searchInPlaylist(filter:Filter):Promise<Array<SongInfo>>
     {
         return finder('playlistsearch', filter);
     }
@@ -1014,7 +1045,7 @@ class MusicPD
         });
     }
 
-    public function count(filter:String, ?group:Tag):Promise<Array<CountInfo>>
+    public function count(filter:Filter, ?group:Tag):Promise<Array<CountInfo>>
     {
         var command = 'count $filter';
         if (group != null) {
@@ -1063,12 +1094,12 @@ class MusicPD
         });
     }
 
-    public function find(filter:String, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    public function find(filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
     {
         return finder('find', filter, sort, window);
     }
 
-    public function findAndAdd(filter:String, ?sort:Tag, ?window:Range):Promise<Response>
+    public function findAndAdd(filter:Filter, ?sort:Tag, ?window:Range):Promise<Response>
     {
         var command = 'findadd "$filter"';
         if (sort != null) {
@@ -1078,5 +1109,81 @@ class MusicPD
             command += ' ${argFromRange(window)}';
         }
         return runCommand(command);
+    }
+
+    public function list(type:Tag, ?filter:Filter, ?group:Tag):Promise<Array<ListResultGroup>>
+    {
+        var command = 'list $type';
+        if (filter != null) command += ' $filter';
+        if (group != null) command += ' group $group';
+        return Future.async((_callback) -> {
+            var listResultGroups = new Array<ListResultGroup>();
+            var listResultGroup:Null<ListResultGroup> = null;
+            if (group == null) {
+                listResultGroup = new ListResultGroup();
+                listResultGroups.push(listResultGroup);
+            }
+            runCommand(command, function(pair) {
+                if (group != null) {
+                    if (pair.name.toLowerCase().startsWith('$group')) {
+                        listResultGroup = new ListResultGroup();
+                        listResultGroup.groupType = pair.name;
+                        listResultGroup.groupName = pair.value;
+                        listResultGroups.push(listResultGroup);
+                        return;
+                    }
+                    // Backstop to prevent crashes if the results look weird
+                    else if (listResultGroup == null) {
+                        listResultGroup = new ListResultGroup();
+                        listResultGroups.push(listResultGroup);
+                        return;
+                    }
+                }
+                listResultGroup.results.push({type: pair.name, name: pair.value});
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(listResultGroups));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    /**
+     * Recommended not to use. List all songs and directories in `uri`
+     */
+    public function listAll(uri:String):Promise<Array<FileSystemEntry>>
+    {
+        return Future.async((_callback) -> {
+            var entries = new Array<FileSystemEntry>();
+            runCommand('listall "$uri"', function(pair) {
+                var type = switch pair.name {
+                    case 'file':
+                        FileEntry;
+                    case 'directory':
+                        DirectoryEntry;
+                    default:
+                        throw 'Unknown entry type ${pair.name}';
+                }
+                entries.push({type: type, name: pair.value});
+            }).handle((outcome) -> {
+                switch (outcome) {
+                    case Success(_):
+                        _callback(Success(entries));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    /**
+     * Recommended not to use. List all songs and directories in `uri` with metadata
+     */
+    public function listAllInfo(uri:String):Promise<Array<SongInfo>>
+    {
+        return finder('listallinfo "$uri"');
     }
 }

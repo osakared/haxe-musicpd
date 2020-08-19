@@ -15,7 +15,7 @@ class ConnectionTest
         MusicPD.connect('localhost').handle((outcome) -> {
             switch outcome {
                 case Success(musicPD):
-                    musicPD.getFingerprint('Just A Body EP/Soft Kill - Just A Body EP - 04 Johnny & Mary.m4a').handle((response) -> {
+                    musicPD.getPlaylistChanges(0).handle((response) -> {
                         switch response {
                             case Success(songs):
                                 trace(songs);

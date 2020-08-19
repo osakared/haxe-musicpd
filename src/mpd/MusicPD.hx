@@ -1,5 +1,7 @@
 package mpd;
 
+import haxe.io.Bytes;
+import haxe.io.BytesOutput;
 import mpd.Response.NameValuePair;
 import tink.core.Error;
 import tink.core.Outcome;
@@ -39,20 +41,49 @@ enum ReplayGainMode
 
 enum abstract Subsystem(String)
 {
-    var Database = 'database';
-    var Update = 'update';
-    var StoredPlaylist = 'stored_playlist';
-    var Playlist = 'playlist';
-    var Player = 'player';
-    var Mixer = 'mixer';
-    var Output = 'output';
-    var Options = 'options';
-    var Partition = 'partition';
-    var Sticker = 'sticker';
-    var Subscription = 'subscription';
-    var Message = 'message';
-    var Neighbor = 'neighbor';
-    var Mount = 'mount';
+    var DatabaseSubsystem = 'database';
+    var UpdateSubsystem = 'update';
+    var StoredPlaylistSubsystem = 'stored_playlist';
+    var PlaylistSubsystem = 'playlist';
+    var PlayerSubsystem = 'player';
+    var MixerSubsystem = 'mixer';
+    var OutputSubsystem = 'output';
+    var OptionsSubsystem = 'options';
+    var PartitionSubsystem = 'partition';
+    var StickerSubsystem = 'sticker';
+    var SubscriptionSubsystem = 'subscription';
+    var MessageSubsystem = 'message';
+    var NeighborSubsystem = 'neighbor';
+    var MountSubsystem = 'mount';
+}
+
+enum abstract Tag(String)
+{
+    var ArtistTag = 'artist';
+    var ArtistSortTag = 'artistsort';
+    var AlbumTag = 'album';
+    var AlbumSortTag = 'albumsort';
+    var AlbumArtistTag = 'albumartist';
+    var AlbumArtistSortTag = 'albumartistsort';
+    var TitleTag = 'title';
+    var TrackTag = 'track';
+    var NameTag = 'name';
+    var GenreTag = 'genre';
+    var DateTag = 'date';
+    var ComposerTag = 'composer';
+    var PerformerTag = 'performer';
+    var ConductorTag = 'conductor';
+    var WorkTag = 'work';
+    var GroupingTag = 'grouping';
+    var CommentTag = 'comment';
+    var DiscTag = 'disc';
+    var LabelTag = 'label';
+    var MusicBrainzArtistIDTag = 'musicbrainz_artistid';
+    var MusicBrainzAlbumIDTag = 'musicbrainz_albumid';
+    var MusicBrainzAlbumArtistIDTag = 'musicbrainz_albumartistid';
+    var MusicBrainzTrackIDTag = 'musicbrainz_trackid';
+    var MusicBrainzReleaseTrackIDTag = 'musicbrainz_releasetrackid';
+    var MusicBrainzWorkIDTag = 'musicbrainz_workid';
 }
 
 typedef Status = {
@@ -145,6 +176,12 @@ typedef PosAndID = {
     var id:Int;
 }
 
+typedef CountInfo = {
+    var ?group:NameValuePair;
+    var ?count:Int;
+    var ?playTime:Int;
+}
+
 class MusicPD
 {
     var socket:Socket;
@@ -225,7 +262,12 @@ class MusicPD
                     return;
                 }
                 var namePair = {name: namePairMatcher.matched(1), value: namePairMatcher.matched(2)};
-                response.values.push(namePair); 
+                response.values.push(namePair);
+                if (namePair.name == 'binary') {
+                    response.binary = socket.input.read(Std.parseInt(namePair.value));
+                    // nab that newline
+                    socket.input.readByte();
+                }
                 if (onPair != null) onPair(namePair);
             }
             _callback(Failure(Error.asError("Don't know what to do")));
@@ -672,7 +714,7 @@ class MusicPD
         return runCommand('moveid $fromID $toPos');
     }
 
-    private function finder(command:String, ?filter:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
+    private function finder(command:String, ?filter:String, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
     {
         return Future.async((_callback) -> {
             var songInfos = new Array<SongInfo>();
@@ -685,7 +727,7 @@ class MusicPD
                 command += ' $sort';
             }
             if (window != null) {
-                command += ' ${argFromPosOrRange(window)}';
+                command += ' ${argFromRange(window)}';
             }
             runCommand(command, (pair) -> {
                 if (firstTag == '') {
@@ -734,20 +776,20 @@ class MusicPD
         return finder('playlistsearch', filter);
     }
 
-    public function getPlaylistChanges(version:Int, ?posOrRange:PosOrRange):Promise<Array<SongInfo>>
+    public function getPlaylistChanges(version:Int, ?range:Range):Promise<Array<SongInfo>>
     {
-        return finder('plchanges $version', null, null, posOrRange);
+        return finder('plchanges $version', null, null, range);
     }
 
-    public function getPlaylistChangesIDs(version:Int, ?posOrRange:PosOrRange):Promise<Array<PosAndID>>
+    public function getPlaylistChangesIDs(version:Int, ?range:Range):Promise<Array<PosAndID>>
     {
         return Future.async((_callback) -> {
             var posAndIDs = new Array<PosAndID>();
             var firstTag:String = '';
             var posAndID:PosAndID = {pos: 0, id: 0};
             var command = 'plchangesposid $version';
-            if (posOrRange != null) {
-                command += ' ${argFromPosOrRange(posOrRange)}';
+            if (range != null) {
+                command += ' ${argFromRange(range)}';
             }
             runCommand(command, function(pair) {
                 if (firstTag == '') {
@@ -932,21 +974,108 @@ class MusicPD
         return runCommand('save $name');
     }
 
-    ///// missing stuff here
+    public function getAlbumArt(uri:String, offset:Int):Promise<Response>
+    {
+        return runCommand('albumart "$uri" $offset');
+    }
 
-    public function find(filter:String, ?sort:String, ?window:PosOrRange):Promise<Array<SongInfo>>
+    private function bytesIterate(getFunction:(command:String, offset:Int)->Promise<Response>, command:String, offset:Int, output:BytesOutput, callback:Outcome<Bytes, tink.CoreApi.Error> -> Void)
+    {
+        getFunction(command, offset).handle((outcome) -> {
+            switch outcome {
+                case Success(response):
+                    output.write(response.binary);
+                    var totalLength:Null<Int> = null;
+                    var chunkLength:Null<Int> = null;
+                    for (pair in response.values) {
+                        if (pair.name == 'size') totalLength = Std.parseInt(pair.value);
+                        else if (pair.name == 'binary') chunkLength = Std.parseInt(pair.value);
+                    }
+                    if (totalLength == null || chunkLength == null) {
+                        throw 'malformed binary response';
+                    }
+                    if (offset + chunkLength == totalLength) {
+                        callback(Success(output.getBytes()));
+                        return;
+                    }
+                    bytesIterate(getFunction, command, offset + chunkLength, output, callback);
+                case Failure(failure):
+                    callback(Failure(failure));
+            }
+        });
+    }
+
+    // Helper function to get whole album art
+    public function readAlbumArt(uri:String):Promise<Bytes>
+    {
+        return Future.async((_callback) -> {
+            var output = new BytesOutput();
+            bytesIterate(getAlbumArt, uri, 0, output, _callback);
+        });
+    }
+
+    public function count(filter:String, ?group:Tag):Promise<Array<CountInfo>>
+    {
+        var command = 'count $filter';
+        if (group != null) {
+            command += ' group $group';
+        }
+        return Future.async((_callback) -> {
+            var countInfos = new Array<CountInfo>();
+            var countInfo:CountInfo = {};
+            runCommand(command, function(pair) {
+                switch pair.name {
+                    case 'songs':
+                        countInfo.count = Std.parseInt(pair.value);
+                    case 'playtime':
+                        countInfo.playTime = Std.parseInt(pair.value);
+                    default:
+                        countInfo = { group: pair };
+                        countInfos.push(countInfo);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(countInfos));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function getFingerprint(uri:String):Promise<String>
+    {
+        return Future.async((_callback) -> {
+            var key:String = '';
+            runCommand('getfingerprint "$uri"', function(pair) {
+                if (pair.name == 'chromaprint') {
+                    key = pair.value;
+                }
+            }).handle((outcome) -> {
+                switch (outcome) {
+                    case Success(_):
+                        _callback(Success(key));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function find(filter:String, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
     {
         return finder('find', filter, sort, window);
     }
 
-    public function findAndAdd(filter:String, ?sort:String, ?window:PosOrRange):Promise<Response>
+    public function findAndAdd(filter:String, ?sort:Tag, ?window:Range):Promise<Response>
     {
         var command = 'findadd "$filter"';
         if (sort != null) {
             command += ' $sort';
         }
         if (window != null) {
-            command += ' ${argFromPosOrRange(window)}';
+            command += ' ${argFromRange(window)}';
         }
         return runCommand(command);
     }

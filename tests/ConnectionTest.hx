@@ -15,10 +15,10 @@ class ConnectionTest
         MusicPD.connect('localhost').handle((outcome) -> {
             switch outcome {
                 case Success(musicPD):
-                    musicPD.listChannels().handle((response) -> {
+                    musicPD.listCommands().handle((response) -> {
                         switch response {
                             case Success(songs):
-                                trace(songs);
+                                trace(songs.collection);
                             case Failure(err):
                                 trace(err);
                         }

@@ -3,7 +3,6 @@ package mpd;
 import haxe.Exception;
 import haxe.io.Bytes;
 import haxe.io.BytesOutput;
-import mpd.Response.NameValuePair;
 import tink.core.Error;
 import tink.core.Outcome;
 import sys.net.Host;
@@ -13,298 +12,11 @@ import tink.core.Promise;
 
 using StringTools;
 
-enum ConnectError
-{
-    InvalidResponseString(response:String);
-}
+typedef SongInfos = CollectionResponse<SongInfo>;
 
-enum State
-{
-    Play;
-    Stop;
-    Pause;
-}
-
-enum SingleState
-{
-    SingleOn;
-    SingleOff;
-    SingleOneshot;
-}
-
-enum ReplayGainMode
-{
-    ReplayGainOff;
-    ReplayGainTrack;
-    ReplayGainAlbum;
-    ReplayGainAuto;
-}
-
-enum abstract FileSystemEntryType(String)
-{
-    var FileEntry = 'file';
-    var DirectoryEntry = 'directory';
-    var PlaylistEntry = 'playlist';
-}
-
-enum abstract Subsystem(String)
-{
-    var DatabaseSubsystem = 'database';
-    var UpdateSubsystem = 'update';
-    var StoredPlaylistSubsystem = 'stored_playlist';
-    var PlaylistSubsystem = 'playlist';
-    var PlayerSubsystem = 'player';
-    var MixerSubsystem = 'mixer';
-    var OutputSubsystem = 'output';
-    var OptionsSubsystem = 'options';
-    var PartitionSubsystem = 'partition';
-    var StickerSubsystem = 'sticker';
-    var SubscriptionSubsystem = 'subscription';
-    var MessageSubsystem = 'message';
-    var NeighborSubsystem = 'neighbor';
-    var MountSubsystem = 'mount';
-}
-
-enum abstract Tag(String)
-{
-    var ArtistTag = 'artist';
-    var ArtistSortTag = 'artistsort';
-    var AlbumTag = 'album';
-    var AlbumSortTag = 'albumsort';
-    var AlbumArtistTag = 'albumartist';
-    var AlbumArtistSortTag = 'albumartistsort';
-    var TitleTag = 'title';
-    var TrackTag = 'track';
-    var NameTag = 'name';
-    var GenreTag = 'genre';
-    var DateTag = 'date';
-    var OriginalDate = 'originaldate';
-    var ComposerTag = 'composer';
-    var PerformerTag = 'performer';
-    var ConductorTag = 'conductor';
-    var WorkTag = 'work';
-    var GroupingTag = 'grouping';
-    var CommentTag = 'comment';
-    var DiscTag = 'disc';
-    var LabelTag = 'label';
-    var MusicBrainzArtistIDTag = 'musicbrainz_artistid';
-    var MusicBrainzAlbumIDTag = 'musicbrainz_albumid';
-    var MusicBrainzAlbumArtistIDTag = 'musicbrainz_albumartistid';
-    var MusicBrainzTrackIDTag = 'musicbrainz_trackid';
-    var MusicBrainzReleaseTrackIDTag = 'musicbrainz_releasetrackid';
-    var MusicBrainzWorkIDTag = 'musicbrainz_workid';
-
-    @:from
-    static public function fromString(s:String)
-    {
-        return switch s.toLowerCase() {
-            case 'artist': ArtistTag;
-            case 'artistsort': ArtistSortTag;
-            case 'album': AlbumTag;
-            case 'albumsort': AlbumSortTag;
-            case 'albumartist': AlbumArtistTag;
-            case 'albumartistsort': AlbumArtistSortTag;
-            case 'title': TitleTag;
-            case 'track': TrackTag;
-            case 'name': NameTag;
-            case 'genre': GenreTag;
-            case 'date': DateTag;
-            case 'originaldate': OriginalDate;
-            case 'composer': ComposerTag;
-            case 'performer': PerformerTag;
-            case 'conductor': ConductorTag;
-            case 'work': WorkTag;
-            case 'grouping': GroupingTag;
-            case 'comment': CommentTag;
-            case 'disc': DiscTag;
-            case 'label': LabelTag;
-            case 'musicbrainz_artistid': MusicBrainzArtistIDTag;
-            case 'musicbrainz_albumid': MusicBrainzAlbumIDTag;
-            case 'musicbrainz_albumartistid': MusicBrainzAlbumArtistIDTag;
-            case 'musicbrainz_trackid': MusicBrainzTrackIDTag;
-            case 'musicbrainz_releasetrackid': MusicBrainzReleaseTrackIDTag;
-            case 'musicbrainz_workid': MusicBrainzWorkIDTag;
-            default: trace('unrecognized tag $s'); ArtistTag;
-        }
-    }
-}
-
-enum abstract Comparison(String)
-{
-    var EqualComparison = '=';
-    var LessComparison = '<';
-    var GreaterComparison = '>';
-}
-
-// So I can swap out for a better structure more easily later
-typedef Filter = String;
-
-typedef Status = {
-    var ?partition:String;
-    var ?volume:Int;
-    var ?repeat:Bool;
-    var ?random:Bool;
-    var ?single:SingleState;
-    var ?consume:Bool;
-    var ?playlist:Int;
-    var ?playlistLength:Int;
-    var ?state:State;
-    var ?song:Int;
-    var ?songID:Int;
-    var ?nextSong:Int;
-    var ?nextSongID:Int;
-    var ?elapsed:Float;
-    var ?duration:Float;
-    var ?bitrate:Int;
-    var ?xfade:Float;
-    var ?mixRampDB:Float;
-    var ?mixRampDelay:Float;
-    var ?audio:{sampleRate:Int, bits:Int, channels:Int};
-    var ?updatingDB:Int;
-    var ?error:String;
-    var ?response:Response;
-}
-
-typedef SongInfo = {
-    var ?file:String;
-    var ?entryType:FileSystemEntryType;
-    var ?lastModified:Date;
-    var ?artist:String;
-    var ?albumArtist:String;
-    var ?title:String;
-    var ?album:String;
-    var ?track:Int;
-    var ?date:String;
-    var ?genre:String;
-    var ?disc:Int;
-    var ?time:Int;
-    var ?duration:Float;
-    var ?pos:Float;
-    var ?id:Int;
-    var ?response:Response;
-    var ?sticker:NameValuePair;
-}
-
-typedef PlaylistInfo = {
-    var ?name:String;
-    var ?lastModified:Date;
-}
-
-typedef Stats = {
-    var ?artists:Int;
-    var ?albums:Int;
-    var ?songs:Int;
-    var ?uptime:Int;
-    var ?dbPlaytime:Int;
-    var ?dbUpdate:Date;
-    var ?playtime:Int;
-    var ?response:Response;
-}
-
-typedef ReplayGainStatus = {
-    var ?replayGainMode:ReplayGainMode;
-    var ?response:Response;
-}
-
-typedef SongID = {
-    var ?id:Int;
-    var ?response:Response;
-}
-
-typedef PosOrRange = {
-    var pos:Int;
-    var ?end:Int;
-}
-
-typedef Range = {
-    var start:Int;
-    var end:Int;
-}
-
-typedef TimeRange = {
-    var start:Float;
-    var end:Float;
-}
-
-typedef PosAndID = {
-    var pos:Int;
-    var id:Int;
-}
-
-typedef CountInfo = {
-    var ?group:NameValuePair;
-    var ?count:Int;
-    var ?playTime:Int;
-}
-
-typedef FileSystemEntry = {
-    var type:FileSystemEntryType;
-    var name:String;
-}
-
-typedef ListResult = {
-    var type:String;
-    var name:String;
-}
-
-typedef Mount = {
-    var mount:String;
-    var ?storage:String;
-}
-
-typedef Neighbor = {
-    var neighbor:String;
-    var ?name:String;
-}
-
-class ListResultGroup
-{
-    public var groupType:Null<String> = null;
-    public var groupName:Null<String> = null;
-    public var results = new Array<ListResult>();
-
-    public function new()
-    {
-    }
-}
-
-class AudioOutput
-{
-    public var id:Int;
-    public var name:String;
-    public var plugin:String;
-    public var outputEnabled:Bool = false;
-    public var attributes = new Array<NameValuePair>();
-
-    public function new(_id:Int)
-    {
-        id = _id;
-    }
-}
-
-class Decoder
-{
-    public var plugin:String;
-    public var suffixes = new Array<String>();
-    public var mimeTypes = new Array<String>();
-
-    public function new(_plugin:String)
-    {
-        plugin = _plugin;
-    }
-}
-
-class ChannelMessages
-{
-    public var channel:String;
-    public var messages = new Array<String>();
-
-    public function new(_channel:String)
-    {
-        channel = _channel;
-    }
-}
-
+/**
+ * Represents a connection to mpd
+ */
 class MusicPD
 {
     var socket:Socket;
@@ -314,6 +26,12 @@ class MusicPD
         socket = _socket;
     }
 
+    /**
+     * Connect to given mpd server described by `host` and `port`.
+     * @param host 
+     * @param port 
+     * @return Promise<MusicPD>
+     */
     public static function connect(host:String, port:Int = 6600):Promise<MusicPD>
     {
         var socket = new Socket();
@@ -327,7 +45,7 @@ class MusicPD
             var initialResponse = socket.input.readLine();
             var tokens = initialResponse.split(' ');
             if (tokens.length != 3 || tokens[0] != 'OK' || tokens[1] != 'MPD') {
-                _callback(Failure(Error.asError(InvalidResponseString(initialResponse))));
+                _callback(Failure(Error.asError(ConnectError.InvalidResponseString(initialResponse))));
             }
             _callback(Success(new MusicPD(socket)));
         });
@@ -368,30 +86,34 @@ class MusicPD
     {
         socket.output.writeString(command + '\n');
         return Future.async((_callback) -> {
-            var response = new Response();
-            var namePairMatcher = new EReg('^(.+):\\s+(.*)$', '');
-            while (true) {
-                var line = socket.input.readLine();
-                if (line.startsWith('ACK')) {
-                    _callback(Failure(parseError(line)));
-                    return;
+            try {
+                var response = new Response();
+                var namePairMatcher = new EReg('^(.+):\\s+(.*)$', '');
+                while (true) {
+                    var line = socket.input.readLine();
+                    if (line.startsWith('ACK')) {
+                        _callback(Failure(parseError(line)));
+                        return;
+                    }
+                    if (line.startsWith('OK')) {
+                        _callback(Success(response));
+                        return;
+                    }
+                    if (!namePairMatcher.match(line)) {
+                        _callback(Failure(Error.asError('Unparseable pair: $line')));
+                        return;
+                    }
+                    var namePair = {name: namePairMatcher.matched(1), value: namePairMatcher.matched(2)};
+                    response.values.push(namePair);
+                    if (namePair.name == 'binary') {
+                        response.binary = socket.input.read(Std.parseInt(namePair.value));
+                        // nab that newline
+                        socket.input.readByte();
+                    }
+                    if (onPair != null) onPair(namePair);
                 }
-                if (line.startsWith('OK')) {
-                    _callback(Success(response));
-                    return;
-                }
-                if (!namePairMatcher.match(line)) {
-                    _callback(Failure(Error.asError('Unparseable pair: $line')));
-                    return;
-                }
-                var namePair = {name: namePairMatcher.matched(1), value: namePairMatcher.matched(2)};
-                response.values.push(namePair);
-                if (namePair.name == 'binary') {
-                    response.binary = socket.input.read(Std.parseInt(namePair.value));
-                    // nab that newline
-                    socket.input.readByte();
-                }
-                if (onPair != null) onPair(namePair);
+            } catch(e:haxe.Exception) {
+                _callback(Failure(Error.asError(e)));
             }
             _callback(Failure(Error.asError("Don't know what to do")));
         });
@@ -442,21 +164,25 @@ class MusicPD
         }
     }
 
+    /**
+     * Clear error state
+     * @return Promise<Response>
+     */
     public function clearError():Promise<Response>
     {
         return runCommand('clearerror');
     }
 
+    /**
+     * Get information about current song
+     * @return Promise<SongInfo>
+     */
     public function getCurrentSong():Promise<SongInfo>
     {
         return Future.async((_callback) -> {
             var songInfo:SongInfo = {};
             runCommand('currentsong', (pair) -> {
-                try {
-                    updateSongInfoFromPair(songInfo, pair);
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
-                }
+                updateSongInfoFromPair(songInfo, pair);
             }).handle((outcome) -> {
                 switch outcome {
                     case Success(response):
@@ -469,6 +195,11 @@ class MusicPD
         });
     }
 
+    /**
+     * Wait until a change happens on mpd.
+     * @param subsystems if specified, only listens on given subsystem(s)
+     * @return Promise<Response>
+     */
     public function idle(?subsystems:Array<Subsystem>):Promise<Response>
     {
         var command = 'idle';
@@ -480,91 +211,94 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Cancel a waiting idle command
+     */
     public function cancelIdle():Void
     {
         socket.output.writeString('noidle\n');
     }
 
+    /**
+     * Get current status of player and volume level
+     * @return Promise<Status>
+     */
     public function getStatus():Promise<Status>
     {
         return Future.async((_callback) -> {
             var status:Status = {};
             runCommand('status', function(pair) {
-                try {
-                    switch pair.name {
-                        case 'partition':
-                            status.partition = pair.value;
-                        case 'volume':
-                            status.volume = Std.parseInt(pair.value);
-                        case 'repeat':
-                            status.repeat = parseBool(pair.value);
-                        case 'random':
-                            status.random = parseBool(pair.value);
-                        case 'single':
-                            status.single = switch pair.value {
-                                case '0':
-                                    SingleOff;
-                                case '1':
-                                    SingleOn;
-                                case 'oneshot':
-                                    SingleOneshot;
-                                default:
-                                    throw 'Unrecognized single state: ${pair.value}';
-                            }
-                        case 'consume':
-                            status.consume = parseBool(pair.value);
-                        case 'playlist':
-                            status.playlist = Std.parseInt(pair.value);
-                        case 'playlistlength':
-                            status.playlistLength = Std.parseInt(pair.value);
-                        case 'state':
-                            status.state = switch pair.value {
-                                case 'play':
-                                    Play;
-                                case 'stop':
-                                    Stop;
-                                case 'pause':
-                                    Pause;
-                                default:
-                                    throw 'Unrecognized play state: ${pair.value}';
-                            }
-                        case 'song':
-                            status.song = Std.parseInt(pair.value);
-                        case 'songid':
-                            status.songID = Std.parseInt(pair.value);
-                        case 'nextsong':
-                            status.nextSong = Std.parseInt(pair.value);
-                        case 'nextsongid':
-                            status.nextSongID = Std.parseInt(pair.value);
-                        case 'elapsed':
-                            status.elapsed = Std.parseFloat(pair.value);
-                        case 'time':
-                            status.elapsed = Std.parseFloat(pair.value);
-                        case 'duration':
-                            status.duration = Std.parseFloat(pair.value);
-                        case 'bitrate':
-                            status.bitrate = Std.parseInt(pair.value);
-                        case 'xfade':
-                            status.xfade = Std.parseFloat(pair.value);
-                        case 'mixrampdb':
-                            status.mixRampDB = Std.parseFloat(pair.value);
-                        case 'mixrampdelay':
-                            status.mixRampDelay = Std.parseFloat(pair.value);
-                        case 'audio':
-                            var parts = pair.value.split(':');
-                            if (parts.length != 3) throw 'Invalid audio string';
-                            status.audio = {
-                                sampleRate: Std.parseInt(parts[0]),
-                                bits: Std.parseInt(parts[1]),
-                                channels: Std.parseInt(parts[2])
-                            };
-                        case 'updating_db':
-                            status.updatingDB = Std.parseInt(pair.value);
-                        case 'error':
-                            status.error = pair.value;
-                    }
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
+                switch pair.name {
+                    case 'partition':
+                        status.partition = pair.value;
+                    case 'volume':
+                        status.volume = Std.parseInt(pair.value);
+                    case 'repeat':
+                        status.repeat = parseBool(pair.value);
+                    case 'random':
+                        status.random = parseBool(pair.value);
+                    case 'single':
+                        status.single = switch pair.value {
+                            case '0':
+                                SingleOff;
+                            case '1':
+                                SingleOn;
+                            case 'oneshot':
+                                SingleOneshot;
+                            default:
+                                throw 'Unrecognized single state: ${pair.value}';
+                        }
+                    case 'consume':
+                        status.consume = parseBool(pair.value);
+                    case 'playlist':
+                        status.playlist = Std.parseInt(pair.value);
+                    case 'playlistlength':
+                        status.playlistLength = Std.parseInt(pair.value);
+                    case 'state':
+                        status.state = switch pair.value {
+                            case 'play':
+                                Play;
+                            case 'stop':
+                                Stop;
+                            case 'pause':
+                                Pause;
+                            default:
+                                throw 'Unrecognized play state: ${pair.value}';
+                        }
+                    case 'song':
+                        status.song = Std.parseInt(pair.value);
+                    case 'songid':
+                        status.songID = Std.parseInt(pair.value);
+                    case 'nextsong':
+                        status.nextSong = Std.parseInt(pair.value);
+                    case 'nextsongid':
+                        status.nextSongID = Std.parseInt(pair.value);
+                    case 'elapsed':
+                        status.elapsed = Std.parseFloat(pair.value);
+                    case 'time':
+                        status.elapsed = Std.parseFloat(pair.value);
+                    case 'duration':
+                        status.duration = Std.parseFloat(pair.value);
+                    case 'bitrate':
+                        status.bitrate = Std.parseInt(pair.value);
+                    case 'xfade':
+                        status.xfade = Std.parseFloat(pair.value);
+                    case 'mixrampdb':
+                        status.mixRampDB = Std.parseFloat(pair.value);
+                    case 'mixrampdelay':
+                        status.mixRampDelay = Std.parseFloat(pair.value);
+                    case 'audio':
+                        var parts = pair.value.split(':');
+                        if (parts.length != 3) throw 'Invalid audio string';
+                        status.audio = {
+                            sampleRate: Std.parseInt(parts[0]),
+                            bits: Std.parseInt(parts[1]),
+                            channels: Std.parseInt(parts[2])
+                        };
+                    case 'updating_db':
+                        status.updatingDB = Std.parseInt(pair.value);
+                    case 'error':
+                        status.error = pair.value;
                 }
             }).handle((outcome) -> {
                 switch outcome {
@@ -578,28 +312,28 @@ class MusicPD
         });
     }
 
+    /**
+     * Get statistics 
+     * @return Promise<Stats>
+     */
     public function getStats():Promise<Stats>
     {
         return Future.async((_callback) -> {
             var stats:Stats = {};
             runCommand('stats', function(pair) {
-                try {
-                    switch pair.name {
-                        case 'uptime':
-                            stats.uptime = Std.parseInt(pair.value);
-                        case 'playtime':
-                            stats.playtime = Std.parseInt(pair.value);
-                        case 'artists':
-                            stats.artists = Std.parseInt(pair.value);
-                        case 'songs':
-                            stats.songs = Std.parseInt(pair.value);
-                        case 'db_playtime':
-                            stats.dbPlaytime = Std.parseInt(pair.value);
-                        case 'db_update':
-                            stats.dbUpdate = Date.fromTime(Std.parseInt(pair.value));
-                    }
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
+                switch pair.name {
+                    case 'uptime':
+                        stats.uptime = Std.parseInt(pair.value);
+                    case 'playtime':
+                        stats.playtime = Std.parseInt(pair.value);
+                    case 'artists':
+                        stats.artists = Std.parseInt(pair.value);
+                    case 'songs':
+                        stats.songs = Std.parseInt(pair.value);
+                    case 'db_playtime':
+                        stats.dbPlaytime = Std.parseInt(pair.value);
+                    case 'db_update':
+                        stats.dbUpdate = Date.fromTime(Std.parseInt(pair.value));
                 }
             }).handle((outcome) -> {
                 switch outcome {
@@ -614,95 +348,108 @@ class MusicPD
         });
     }
 
+    /**
+     * Turn consume mode (whether to remove songs from playlist as they finish playing) on or off
+     * @param consume 
+     * @return Promise<Response>
+     */
     public function setConsume(consume:Bool):Promise<Response>
     {
         return runCommand('consume ${displayBool(consume)}');
     }
 
+    /**
+     * Set crossfade in seconds
+     * @param seconds crossfade duration, in seconds
+     * @return Promise<Response>
+     */
     public function setCrossfade(seconds:Int):Promise<Response>
     {
         return runCommand('crossfade $seconds');
     }
 
+    /**
+     * Set decibles at which to mix ramp, instead of crossfading
+     * @param db threshold at which songs will be overlapped
+     * @return Promise<Response>
+     */
     public function setMixRampDB(db:Int):Promise<Response>
     {
         return runCommand('mixrampdb $db');
     }
 
+    /**
+     * Set delay before applying mix ramp
+     * @param delay delay in seconds
+     * @return Promise<Response>
+     */
     public function setMixRampDelay(delay:Int):Promise<Response>
     {
         return runCommand('mixrampdelay $delay');
     }
 
+    /**
+     * Turns random state on or of
+     * @param random whether to turn random on or off
+     * @return Promise<Response>
+     */
     public function setRandom(random:Bool):Promise<Response>
     {
         return runCommand('random ${displayBool(random)}');
     }
 
+    /**
+     * Turns repeat state on or off
+     * @param repeat whether to turn repeat mode on or off
+     * @return Promise<Response>
+     */
     public function setRepeat(repeat:Bool):Promise<Response>
     {
         return runCommand('repeat ${displayBool(repeat)}');
     }
 
+    /**
+     * Sets volume of playback
+     * @param volume value between 0 and 100
+     * @return Promise<Response>
+     */
     public function setVolume(volume:Int):Promise<Response>
     {
-        if (volume < 0 || volume > 100) {
-            Future.sync(Failure(Error.asError('Invalid volume: $volume')));
-        }
         return runCommand('setvol $volume');
     }
 
+    /**
+     * Set single mode state
+     * @param singleState `SingleState` to set to
+     * @return Promise<Response>
+     */
     public function setSingle(singleState:SingleState):Promise<Response>
     {
-        var singleStateString = switch singleState {
-            case SingleOff:
-                '0';
-            case SingleOn:
-                '1';
-            case SingleOneshot:
-                'oneshot';
-        };
-        return runCommand('single $singleStateString');
+        return runCommand('single $singleState');
     }
 
+    /**
+     * Set replay gain mode
+     * @param replayGainMode 
+     * @return Promise<Response>
+     */
     public function setReplayGainMode(replayGainMode:ReplayGainMode):Promise<Response>
     {
-        var replayGainModeString = switch replayGainMode {
-            case ReplayGainOff:
-                'off';
-            case ReplayGainTrack:
-                'track';
-            case ReplayGainAlbum:
-                'album';
-            case ReplayGainAuto:
-                'auto';
-        };
-        return runCommand('replay_gain_mode $replayGainModeString');
+        return runCommand('replay_gain_mode $replayGainMode');
     }
 
+    /**
+     * Get current replay gain status
+     * @return Promise<ReplayGainStatus>
+     */
     public function getReplayGainStatus():Promise<ReplayGainStatus>
     {
         return Future.async((_callback) -> {
             var replayGainStatus:ReplayGainStatus = {};
             runCommand('replay_gain_status', function(pair) {
-                try {
-                    switch pair.name {
-                        case 'replay_gain_mode':
-                            replayGainStatus.replayGainMode = switch pair.value {
-                                case 'off':
-                                    ReplayGainOff;
-                                case 'track':
-                                    ReplayGainTrack;
-                                case 'album':
-                                    ReplayGainAlbum;
-                                case 'auto':
-                                    ReplayGainAuto;
-                                default:
-                                    throw 'Unknown replay gain mode: ${pair.value}';
-                            }
-                    }
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
+                switch pair.name {
+                    case 'replay_gain_mode':
+                        replayGainStatus.replayGainMode = pair.value;
                 }
             }).handle((outcome) -> {
                 switch outcome {
@@ -716,70 +463,120 @@ class MusicPD
         });
     }
 
+    /**
+     * Plays next song in playlist
+     * @return Promise<Response>
+     */
     public function next():Promise<Response>
     {
         return runCommand('next');
     }
 
+    /**
+     * Sets pause on or off
+     * @param pause 
+     * @return Promise<Response>
+     */
     public function setPause(pause:Bool):Promise<Response>
     {
         return runCommand('pause ${displayBool(pause)}');
     }
 
+    /**
+     * Plays current song or song at `songPos` if given
+     * @param songPos 
+     * @return Promise<Response>
+     */
     public function play(songPos:Null<Int> = null):Promise<Response>
     {
-        var arg = if (songPos != null) {
-            ' $songPos';
-        } else {
-            '';
+        var command = 'play';
+        if (songPos != null) {
+            command += ' $songPos';
         }
-        return runCommand('play$arg');
+        return runCommand(command);
     }
 
+    /**
+     * Plays song in playlist with given song id
+     * @param songID song id to play
+     * @return Promise<Response>
+     */
     public function playID(songID:Null<Int> = null):Promise<Response>
     {
-        var arg = if (songID != null) {
-            ' $songID';
-        } else {
-            '';
+        var command = 'playid';
+        if (songID != null) {
+            command += ' $songID';
         }
-        return runCommand('playid$arg');
+        return runCommand(command);
     }
 
+    /**
+     * Plays previous song in the playlist.
+     * @return Promise<Response>
+     */
     public function previous():Promise<Response>
     {
         return runCommand('previous');
     }
 
-    public function seek(songPos:Int, time:Float):Promise<Response>
+    /**
+     * Seeks to the position `time` of entry `songPos` in the playlist.
+     * @param songPos position in the playlist
+     * @param time time in seconds.
+     * @return Promise<Response>
+     */
+    public function seek(songPos:Int, time:Float, relativeType:RelativeType = RelativeType.Absolute):Promise<Response>
     {
-        return runCommand('seek $songPos $time');
+        return runCommand('seek $songPos $relativeType$time');
     }
 
-    public function seekID(songID:Int, time:Float):Promise<Response>
+    /**
+     * Seeks to the position `time` of song with `songID` in the playlist.
+     * @param songID songID of song to seek to
+     * @param time time in seconds.
+     * @return Promise<Response>
+     */
+    public function seekID(songID:Int, time:Float, relativeType:RelativeType = RelativeType.Absolute):Promise<Response>
     {
-        return runCommand('seekid $songID $time');
+        return runCommand('seekid $songID $relativeType$time');
     }
 
-    public function seekCur(time:Float, relative:Bool = false):Promise<Response>
+    /**
+     * Seek in current song
+     * @param time time in seconds
+     * @param relativeType whether `time` is absolute, or relative to current playing position
+     * @return Promise<Response>
+     */
+    public function seekCur(time:Float, relativeType:RelativeType = RelativeType.Absolute):Promise<Response>
     {
-        var timeString = '$time';
-        if (relative && time >= 0.0) {
-            timeString = '+' + timeString;
-        }
-        return runCommand('seekcur $timeString');
+        return runCommand('seekcur $relativeType$time');
     }
 
+    /**
+     * Stops playback
+     * @return Promise<Response>
+     */
     public function stop():Promise<Response>
     {
         return runCommand('stop');
     }
 
+    /**
+     * Adds the file `uri` to the playlist (directories add recursively). `uri` can also be a single file.
+     * @param uri 
+     * @return Promise<Response>
+     */
     public function add(uri:String):Promise<Response>
     {
         return runCommand('add "$uri"');
     }
 
+    /**
+     * Adds song with uri `uri` to playlist
+     * @param uri uri of song
+     * @param position optional position in playlist to add it to
+     * @return Promise<SongID> id of song that was added
+     */
     public function addID(uri:String, ?position:Int):Promise<SongID>
     {
         return Future.async((_callback) -> {
@@ -789,13 +586,9 @@ class MusicPD
                 command += ' $position';
             }
             runCommand(command, function(pair) {
-                try {
-                    switch pair.name {
-                        case 'Id':
-                            songID.id = Std.parseInt(pair.value);
-                    }
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
+                switch pair.name.toLowerCase() {
+                    case 'id':
+                        songID.id = Std.parseInt(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
@@ -809,6 +602,10 @@ class MusicPD
         });
     }
 
+    /**
+     * Clears the queue
+     * @return Promise<Response>
+     */
     public function clear():Promise<Response>
     {
         return runCommand('clear');
@@ -828,30 +625,52 @@ class MusicPD
         return '${range.start}:${range.end}';
     }
 
+    /**
+     * Deletes specified position(s) from the playlist
+     * @param posOrRange single position or range of positions to delete
+     * @return Promise<Response>
+     */
     public function delete(posOrRange:PosOrRange):Promise<Response>
     {
         return runCommand('delete ${argFromPosOrRange(posOrRange)}');
     }
 
+    /**
+     * Delete specified song from playlist
+     * @param songID id of song
+     * @return Promise<Response>
+     */
     public function deleteID(songID:Int):Promise<Response>
     {
         return runCommand('deleteid $songID');
     }
 
+    /**
+     * Move song(s) at `posOrRange` to `toPos` in the playlist
+     * @param posOrRange 
+     * @param toPos 
+     * @return Promise<Response>
+     */
     public function move(posOrRange:PosOrRange, toPos:Int):Promise<Response>
     {
         return runCommand('move ${argFromPosOrRange(posOrRange)} $toPos');
     }
 
-    public function moveID(fromID:Int, toPos:Int):Promise<Response>
+    /**
+     * Move song with id `songID` to position `toPos` in playlist
+     * @param songID 
+     * @param toPos 
+     * @return Promise<Response>
+     */
+    public function moveID(songID:Int, toPos:Int):Promise<Response>
     {
-        return runCommand('moveid $fromID $toPos');
+        return runCommand('moveid $songID $toPos');
     }
 
-    private function finder(command:String, ?filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    private function finder(command:String, ?filter:Filter, ?sort:Tag, ?window:Range):Promise<SongInfos>
     {
         return Future.async((_callback) -> {
-            var songInfos = new Array<SongInfo>();
+            var songInfos = new SongInfos();
             var songInfo:SongInfo = {};
             if (filter != null) {
                 command += ' "$filter"';
@@ -865,16 +684,13 @@ class MusicPD
             runCommand(command, (pair) -> {
                 if (pair.name == 'file' || pair.name == 'directory') {
                     songInfo = {};
-                    songInfos.push(songInfo);
+                    songInfos.collection.push(songInfo);
                 }
-                try {
-                    updateSongInfoFromPair(songInfo, pair);
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
-                }
+                updateSongInfoFromPair(songInfo, pair);
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        songInfo.response = response;
                         _callback(Success(songInfos));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -883,65 +699,92 @@ class MusicPD
         });
     }
 
-    public function findInPlaylist(filter:Filter):Promise<Array<SongInfo>>
+    /**
+     * Find songs in current playlist using the given `Filter`
+     * @param filter 
+     * @return Promise<SongInfos>
+     */
+    public function findInPlaylist(filter:Filter):Promise<SongInfos>
     {
         return finder('playlistfind', filter);
     }
 
-    public function getPlaylist(?songID:Int):Promise<Array<SongInfo>>
+    /**
+     * Get `SongInfo`s from current playlist or single song
+     * @param songID if specified, only gets `SongInfo` for given song id
+     * @return Promise<SongInfos>
+     */
+    public function getPlaylist(?songID:Int):Promise<SongInfos>
     {
         var command = 'playlistid';
         if (songID != null) command += ' $songID';
         return finder(command);
     }
 
-    public function getPlaylistInfo(posOrRange:PosOrRange):Promise<Array<SongInfo>>
+    /**
+     * Get `SongInfo`s for given position or range
+     * @param posOrRange 
+     * @return Promise<SongInfos>
+     */
+    public function getPlaylistInfo(posOrRange:PosOrRange):Promise<SongInfos>
     {
         var command = 'playlistinfo ${argFromPosOrRange(posOrRange)}';
         return finder(command);
     }
 
-    public function searchInPlaylist(filter:Filter):Promise<Array<SongInfo>>
+    /**
+     * Search using given `Filter` within the current playlist
+     * @param filter 
+     * @return Promise<SongInfos>
+     */
+    public function searchInPlaylist(filter:Filter):Promise<SongInfos>
     {
         return finder('playlistsearch', filter);
     }
 
-    public function getPlaylistChanges(version:Int, ?range:Range):Promise<Array<SongInfo>>
+    /**
+     * Get changes to current playlist since playlist version `version`
+     * @param version 
+     * @param range if present, only returns changes in given range
+     * @return Promise<SongInfos>
+     */
+    public function getPlaylistChanges(version:Int, ?range:Range):Promise<SongInfos>
     {
         return finder('plchanges $version', null, null, range);
     }
 
-    public function getPlaylistChangesIDs(version:Int, ?range:Range):Promise<Array<PosAndID>>
+    /**
+     * Get changes to current playlist since playlist version `version`
+     * @param version 
+     * @param range if present, only returns changes in given range
+     * @return Promise<CollectionResponse<PosAndID>>
+     */
+    public function getPlaylistChangesIDs(version:Int, ?range:Range):Promise<CollectionResponse<PosAndID>>
     {
         return Future.async((_callback) -> {
-            var posAndIDs = new Array<PosAndID>();
+            var posAndIDs = new CollectionResponse<PosAndID>();
             var firstTag:String = '';
-            var posAndID:PosAndID = {pos: 0, id: 0};
+            var posAndID:PosAndID = {};
             var command = 'plchangesposid $version';
             if (range != null) {
                 command += ' ${argFromRange(range)}';
             }
             runCommand(command, function(pair) {
-                if (firstTag == '') {
+                if (firstTag == '' || firstTag == pair.name) {
                     firstTag = pair.name;
-                    posAndIDs.push(posAndID);
+                    posAndID = {}
+                    posAndIDs.collection.push(posAndID);
                 }
-                else if (firstTag == pair.name) {
-                    posAndID = {pos: 0, id: 0};
-                }
-                try {
-                    switch pair.name.toLowerCase() {
-                        case 'cpos':
-                            posAndID.pos = Std.parseInt(pair.value);
-                        case 'id':
-                            posAndID.id = Std.parseInt(pair.value);
-                    }
-                } catch(e:haxe.Exception) {
-                    _callback(Failure(Error.asError(e)));
+                switch pair.name.toLowerCase() {
+                    case 'cpos':
+                        posAndID.pos = Std.parseInt(pair.value);
+                    case 'id':
+                        posAndID.id = Std.parseInt(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        posAndIDs.response = response;
                         _callback(Success(posAndIDs));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -950,11 +793,23 @@ class MusicPD
         });
     }
 
+    /**
+     * Set the priority of the specified songs. A higher priority means that it will be played first when random mode is enabled.
+     * @param priority value between 0 and 255. default is 0.
+     * @param range 
+     * @return Promise<Response>
+     */
     public function setPriority(priority:Int, range:Range):Promise<Response>
     {
         return runCommand('prio $priority ${argFromRange(range)}');
     }
 
+    /**
+     * Set the priority of the specified songs. A higher priority means that it will be played first when “random” mode is enabled.
+     * @param priority value between 0 and 255. default is 0.
+     * @param ids ids of songs to set priority on 
+     * @return Promise<Response>
+     */
     public function setPriorityForID(priority:Int, ids:Array<Int>):Promise<Response>
     {
         var command = 'prioid $priority';
@@ -964,6 +819,12 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Sets range within song `id` to play
+     * @param id song id
+     * @param timeRange if present, limits playback to given range, otherwise clears any such restriction
+     * @return Promise<Response>
+     */
     public function setRangeForID(id:Int, ?timeRange:TimeRange):Promise<Response>
     {
         var command = 'rangeid $id ';
@@ -972,7 +833,12 @@ class MusicPD
         return runCommand(command);
     }
 
-    public function shuffer(?range:Range):Promise<Response>
+    /**
+     * Shuffles the queue
+     * @param range if present, restricts shuffling to `range`
+     * @return Promise<Response>
+     */
+    public function shuffle(?range:Range):Promise<Response>
     {
         var command = 'shuffle';
         if (range != null) {
@@ -981,22 +847,49 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Swaps the positions of `song1` and `song2`.
+     * @param song1 
+     * @param song2 
+     * @return Promise<Response>
+     */
     public function swap(song1:Int, song2:Int):Promise<Response>
     {
         return runCommand('swap $song1 $song2');
     }
 
+    /**
+     * Swaps the positions of songs with ids `id1` and `id2`
+     * @param id1 
+     * @param id2 
+     * @return Promise<Response>
+     */
     public function swapSongIDs(id1:Int, id2:Int):Promise<Response>
     {
         return runCommand('swapid $id1 $id2');
     }
 
-    public function setTag(id:Int, tag:String, value:String):Promise<Response>
+    /**
+     * Adds a tag to the specified song. Editing song tags is only possible for remote songs.
+     * This change is volatile: it may be overwritten by tags received from the server, and the data is gone when the song gets removed from the queue.
+     * @param id song id
+     * @param tag 
+     * @param value
+     * @return Promise<Response>
+     */
+    public function setTag(id:Int, tag:Tag, value:String):Promise<Response>
     {
         return runCommand('addtagid $id $tag $value');
     }
 
-    public function clearTag(id:Int, ?tag:String):Promise<Response>
+    /**
+     * Removes tags from the specified song. If `tag` is not specified, then all tag values will be removed.
+     * Editing song tags is only possible for remote songs.
+     * @param id 
+     * @param tag 
+     * @return Promise<Response>
+     */
+    public function clearTag(id:Int, ?tag:Tag):Promise<Response>
     {
         var command = 'cleartagid $id';
         if (tag != null) {
@@ -1005,17 +898,23 @@ class MusicPD
         return runCommand(command);
     }
 
-    public function getPlaylistListing(name:String):Promise<Array<String>>
+    /**
+     * Lists songs in playlist `name`
+     * @param name 
+     * @return Promise<CollectionResponse<String>>
+     */
+    public function getPlaylistListing(name:String):Promise<CollectionResponse<String>>
     {
         return Future.async((_callback) -> {
-            var files = new Array<String>();
+            var files = new CollectionResponse<String>();
             runCommand('listplaylist $name', function(pair) {
                 if (pair.name.toLowerCase() == 'file') {
-                    files.push(pair.value);
+                    files.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        files.response = response;
                         _callback(Success(files));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1024,21 +923,30 @@ class MusicPD
         });
     }
 
-    public function getPlaylistInfoListing(name:String):Promise<Array<SongInfo>>
+    /**
+     * Get detailed list of songs in playlist `name`
+     * @param name 
+     * @return Promise<SongInfos>
+     */
+    public function getPlaylistInfoListing(name:String):Promise<SongInfos>
     {
         return finder('listplaylistinfo $name');
     }
 
-    public function getPlaylists():Promise<Array<PlaylistInfo>>
+    /**
+     * Get list of all playlists
+     * @return Promise<CollectionResponse<PlaylistInfo>>
+     */
+    public function getPlaylists():Promise<CollectionResponse<PlaylistInfo>>
     {
         return Future.async((_callback) -> {
-            var playlistInfos = new Array<PlaylistInfo>();
+            var playlistInfos = new CollectionResponse<PlaylistInfo>();
             var firstTag:String = '';
             var playlistInfo:PlaylistInfo = {};
             runCommand('listplaylists', function(pair) {
                 if (firstTag == '') {
                     firstTag = pair.name;
-                    playlistInfos.push(playlistInfo);
+                    playlistInfos.collection.push(playlistInfo);
                 }
                 else if (firstTag == pair.name) {
                     playlistInfo = {};
@@ -1051,7 +959,8 @@ class MusicPD
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        playlistInfos.response = response;
                         _callback(Success(playlistInfos));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1060,6 +969,12 @@ class MusicPD
         });
     }
 
+    /**
+     * Switch to playlist `name`
+     * @param name 
+     * @param range if present, only loads this portion of playlist
+     * @return Promise<Response>
+     */
     public function loadPlaylist(name:String, ?range:Range):Promise<Response>
     {
         var command = 'load $name';
@@ -1069,41 +984,87 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Add song at `uri` to playlist `name`
+     * @param name 
+     * @param uri 
+     * @return Promise<Response>
+     */
     public function addURIToPlaylist(name:String, uri:String):Promise<Response>
     {
         return runCommand('playlistadd $name "$uri"');
     }
 
+    /**
+     * Clear playlist `name`
+     * @param name 
+     * @return Promise<Response>
+     */
     public function clearPlaylist(name:String):Promise<Response>
     {
         return runCommand('playlistclear $name');
     }
 
+    /**
+     * Delete song at pos `pos` from playlist `name`
+     * @param name 
+     * @param pos 
+     * @return Promise<Response>
+     */
     public function deleteSongFromPlaylist(name:String, pos:Int):Promise<Response>
     {
         return runCommand('playlistdelete $name $pos');
     }
 
+    /**
+     * Move song at pos `from` to pos `to` in playlist `name`
+     * @param name 
+     * @param from 
+     * @param to 
+     * @return Promise<Response>
+     */
     public function moveInPlaylist(name:String, from:Int, to:Int):Promise<Response>
     {
         return runCommand('playlistmove $name $from $to');
     }
 
+    /**
+     * Rename playlist `name` to `newName`
+     * @param name 
+     * @param newName 
+     * @return Promise<Response>
+     */
     public function renamePlaylist(name:String, newName:String):Promise<Response>
     {
         return runCommand('rename $name $newName');
     }
 
+    /**
+     * Delete playlist `name`
+     * @param name 
+     * @return Promise<Response>
+     */
     public function deletePlaylist(name:String):Promise<Response>
     {
         return runCommand('rm $name');
     }
 
+    /**
+     * Save current playlist as `name`
+     * @param name 
+     * @return Promise<Response>
+     */
     public function savePlaylist(name:String):Promise<Response>
     {
         return runCommand('save $name');
     }
 
+    /**
+     * Get album art for `uri`. It's more convenient to use `readAlbumArt` as it returns all the data
+     * @param uri 
+     * @param offset 
+     * @return Promise<Response>
+     */
     public function getAlbumArt(uri:String, offset:Int):Promise<Response>
     {
         return runCommand('albumart "$uri" $offset');
@@ -1135,7 +1096,11 @@ class MusicPD
         });
     }
 
-    // Helper function to get whole album art
+    /**
+     * Get entire image data for song at `uri`
+     * @param uri 
+     * @return Promise<Bytes>
+     */
     public function readAlbumArt(uri:String):Promise<Bytes>
     {
         return Future.async((_callback) -> {
@@ -1144,14 +1109,20 @@ class MusicPD
         });
     }
 
-    public function count(filter:Filter, ?group:Tag):Promise<Array<CountInfo>>
+    /**
+     * Return counts for `Filter` `filter`.
+     * @param filter 
+     * @param group if present, groups results by tag `group`
+     * @return Promise<CollectionResponse<CountInfo>>
+     */
+    public function count(filter:Filter, ?group:Tag):Promise<CollectionResponse<CountInfo>>
     {
         var command = 'count $filter';
         if (group != null) {
             command += ' group $group';
         }
         return Future.async((_callback) -> {
-            var countInfos = new Array<CountInfo>();
+            var countInfos = new CollectionResponse<CountInfo>();
             var countInfo:CountInfo = {};
             runCommand(command, function(pair) {
                 switch pair.name {
@@ -1159,13 +1130,14 @@ class MusicPD
                         countInfo.count = Std.parseInt(pair.value);
                     case 'playtime':
                         countInfo.playTime = Std.parseInt(pair.value);
-                    default:
+                    case 'group':
                         countInfo = { group: pair };
-                        countInfos.push(countInfo);
+                        countInfos.collection.push(countInfo);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        countInfos.response = response;
                         _callback(Success(countInfos));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1174,17 +1146,23 @@ class MusicPD
         });
     }
 
-    public function getFingerprint(uri:String):Promise<String>
+    /**
+     * Get fingerprint for `uri`. mpd must have fingerprint support turned on.
+     * @param uri 
+     * @return Promise<StringResponse>
+     */
+    public function getFingerprint(uri:String):Promise<StringResponse>
     {
         return Future.async((_callback) -> {
-            var key:String = '';
+            var key:StringResponse = {};
             runCommand('getfingerprint "$uri"', function(pair) {
                 if (pair.name == 'chromaprint') {
-                    key = pair.value;
+                    key.value = pair.value;
                 }
             }).handle((outcome) -> {
                 switch (outcome) {
-                    case Success(_):
+                    case Success(response):
+                        key.response = response;
                         _callback(Success(key));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1193,11 +1171,25 @@ class MusicPD
         });
     }
 
-    public function find(filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    /**
+     * Get `SongInfo`s for query `finder`
+     * @param filter 
+     * @param sort if present, sort by tag `sort`
+     * @param window if present, limits results to range `window`
+     * @return Promise<SongInfos>
+     */
+    public function find(filter:Filter, ?sort:Tag, ?window:Range):Promise<SongInfos>
     {
         return finder('find', filter, sort, window);
     }
 
+    /**
+     * Put results of query `filter` into current playlist
+     * @param filter 
+     * @param sort if present, sort by tag `sort`
+     * @param window if present, limits results to range `window`
+     * @return Promise<Response>
+     */
     public function findAndAdd(filter:Filter, ?sort:Tag, ?window:Range):Promise<Response>
     {
         var command = 'findadd "$filter"';
@@ -1210,38 +1202,38 @@ class MusicPD
         return runCommand(command);
     }
 
-    public function list(type:Tag, ?filter:Filter, ?group:Tag):Promise<Array<ListResultGroup>>
+    /**
+     * Lists unique tags values of the specified type.
+     * @param type 
+     * @param filter 
+     * @param group 
+     * @return Promise<CollectionResponse<ListResultGroup>>
+     */
+    public function list(type:Tag, ?filter:Filter, ?group:Tag):Promise<CollectionResponse<ListResultGroup>>
     {
         var command = 'list $type';
         if (filter != null) command += ' $filter';
         if (group != null) command += ' group $group';
         return Future.async((_callback) -> {
-            var listResultGroups = new Array<ListResultGroup>();
-            var listResultGroup:Null<ListResultGroup> = null;
+            var listResultGroups = new CollectionResponse<ListResultGroup>();
+            var listResultGroup = new ListResultGroup();
             if (group == null) {
                 listResultGroup = new ListResultGroup();
-                listResultGroups.push(listResultGroup);
+                listResultGroups.collection.push(listResultGroup);
             }
             runCommand(command, function(pair) {
-                if (group != null) {
-                    if (pair.name.toLowerCase().startsWith('$group')) {
-                        listResultGroup = new ListResultGroup();
-                        listResultGroup.groupType = pair.name;
-                        listResultGroup.groupName = pair.value;
-                        listResultGroups.push(listResultGroup);
-                        return;
-                    }
-                    // Backstop to prevent crashes if the results look weird
-                    else if (listResultGroup == null) {
-                        listResultGroup = new ListResultGroup();
-                        listResultGroups.push(listResultGroup);
-                        return;
-                    }
+                if (group != null && pair.name.toLowerCase().startsWith('$group')) {
+                    listResultGroup = new ListResultGroup();
+                    listResultGroup.groupType = pair.name;
+                    listResultGroup.groupName = pair.value;
+                    listResultGroups.collection.push(listResultGroup);
+                    return;
                 }
                 listResultGroup.results.push({type: pair.name, name: pair.value});
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        listResultGroups.response = response;
                         _callback(Success(listResultGroups));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1253,23 +1245,24 @@ class MusicPD
     /**
      * Recommended not to use. List all songs and directories in `uri`
      */
-    public function listAll(uri:String):Promise<Array<FileSystemEntry>>
+    public function listAll(uri:String):Promise<CollectionResponse<FileSystemEntry>>
     {
         return Future.async((_callback) -> {
-            var entries = new Array<FileSystemEntry>();
+            var entries = new CollectionResponse<FileSystemEntry>();
             runCommand('listall "$uri"', function(pair) {
                 var type = switch pair.name {
                     case 'file':
-                        FileEntry;
+                        FileSystemEntryType.FileEntry;
                     case 'directory':
-                        DirectoryEntry;
+                        FileSystemEntryType.DirectoryEntry;
                     default:
                         throw 'Unknown entry type ${pair.name}';
                 }
-                entries.push({type: type, name: pair.value});
+                entries.collection.push({type: type, name: pair.value});
             }).handle((outcome) -> {
                 switch (outcome) {
-                    case Success(_):
+                    case Success(response):
+                        entries.response = response;
                         _callback(Success(entries));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1281,7 +1274,7 @@ class MusicPD
     /**
      * Recommended not to use. List all songs and directories in `uri` with metadata
      */
-    public function listAllInfo(uri:String):Promise<Array<SongInfo>>
+    public function listAllInfo(uri:String):Promise<SongInfos>
     {
         return finder('listallinfo "$uri"');
     }
@@ -1289,7 +1282,7 @@ class MusicPD
     /**
      * Lists the contents of the directory `uri`, including files are not recognized by mpd
      */
-    public function listFiles(uri:String):Promise<Array<SongInfo>>
+    public function listFiles(uri:String):Promise<SongInfos>
     {
         return finder('listfiles "$uri"');
     }
@@ -1297,7 +1290,7 @@ class MusicPD
     /**
      * Lists the contents of the directory `uri`.
      */
-    public function listInfo(uri:String):Promise<Array<SongInfo>>
+    public function listInfo(uri:String):Promise<SongInfos>
     {
         return finder('lsinfo "$uri"');
     }
@@ -1312,11 +1305,22 @@ class MusicPD
         return runCommand('readcomments "$uri"');
     }
 
+    /**
+     * Get picture for song `uri`
+     * @param uri 
+     * @param offset 
+     * @return Promise<Response>
+     */
     public function getPicture(uri:String, offset:Int):Promise<Response>
     {
         return runCommand('readpicture "$uri" $offset');
     }
 
+    /**
+     * Reads entire picture for song `uri`
+     * @param uri 
+     * @return Promise<Bytes>
+     */
     public function readPicture(uri:String):Promise<Bytes>
     {
         return Future.async((_callback) -> {
@@ -1325,11 +1329,25 @@ class MusicPD
         });
     }
 
-    public function search(filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    /**
+     * Case insensitive search
+     * @param filter 
+     * @param sort 
+     * @param window 
+     * @return Promise<SongInfos>
+     */
+    public function search(filter:Filter, ?sort:Tag, ?window:Range):Promise<SongInfos>
     {
         return finder('search', filter, sort, window);
     }
 
+    /**
+     * Case insensitive search and add to current playlist
+     * @param filter 
+     * @param sort 
+     * @param window 
+     * @return Promise<Response>
+     */
     public function searchAndAdd(filter:Filter, ?sort:Tag, ?window:Range):Promise<Response>
     {
         var command = 'searchadd "$filter"';
@@ -1342,6 +1360,14 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Case-insensitive search and add to playlist `playlist`
+     * @param playlist 
+     * @param filter 
+     * @param sort 
+     * @param window 
+     * @return Promise<Response>
+     */
     public function searchAndAddToPlaylist(playlist:String, filter:String, ?sort:Tag, ?window:Range):Promise<Response>
     {
         var command = 'searchaddpl "$playlist" "$filter"';
@@ -1354,42 +1380,68 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Searches and updates any modified files under `uri`
+     * @param uri 
+     * @return Promise<Response>
+     */
     public function update(uri:String):Promise<Response>
     {
         return runCommand('update "$uri"');
     }
 
+    /**
+     * Searches and updates all files under `uri`
+     * @param uri 
+     * @return Promise<Response>
+     */
     public function rescan(uri:String):Promise<Response>
     {
         return runCommand('rescan "$uri"');
     }
 
+    /**
+     * Mount `uri` at `path`
+     * @param path 
+     * @param uri 
+     * @return Promise<Response>
+     */
     public function mount(path:String, uri:String):Promise<Response>
     {
         return runCommand('mount "$path" "$uri"');
     }
 
+    /**
+     * Unmount path `path`
+     * @param path 
+     * @return Promise<Response>
+     */
     public function unmount(path:String):Promise<Response>
     {
         return runCommand('unmount "$path"');
     }
 
-    public function listMounts():Promise<Array<Mount>>
+    /**
+     * List current mounts
+     * @return Promise<CollectionResponse<Mount>>
+     */
+    public function listMounts():Promise<CollectionResponse<Mount>>
     {
         return Future.async((_callback) -> {
-            var mounts = new Array<Mount>();
+            var mounts = new CollectionResponse<Mount>();
             var mount:Mount = { mount: '' };
             runCommand('listmounts', function(pair) {
                 if (pair.name == 'mount') {
                     mount = { mount: pair.value };
-                    mounts.push(mount);
+                    mounts.collection.push(mount);
                 }
                 else if (pair.name == 'storage') {
                     mount.storage = pair.value;
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        mounts.response = response;
                         _callback(Success(mounts));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1398,22 +1450,27 @@ class MusicPD
         });
     }
 
-    public function listNeighbors():Promise<Array<Neighbor>>
+    /**
+     * List available network volume
+     * @return Promise<CollectionResponse<Neighbor>>
+     */
+    public function listNeighbors():Promise<CollectionResponse<Neighbor>>
     {
         return Future.async((_callback) -> {
-            var neighbors = new Array<Neighbor>();
+            var neighbors = new CollectionResponse<Neighbor>();
             var neighbor:Neighbor = { neighbor: '' };
             runCommand('listneighbors', function(pair) {
                 if (pair.name == 'neighbor') {
                     neighbor = { neighbor: pair.value };
-                    neighbors.push(neighbor);
+                    neighbors.collection.push(neighbor);
                 }
                 else if (pair.name == 'name') {
                     neighbor.name = pair.value;
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        neighbors.response = response;
                         _callback(Success(neighbors));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1422,17 +1479,25 @@ class MusicPD
         });
     }
 
-    public function getSticker(type:String, uri:String, name:String):Promise<String>
+    /**
+     * Get sticker value
+     * @param type 
+     * @param uri 
+     * @param name 
+     * @return Promise<StringResponse>
+     */
+    public function getSticker(type:String, uri:String, name:String):Promise<StringResponse>
     {
         return Future.async((_callback) -> {
-            var val = '';
+            var val:StringResponse = {};
             runCommand('sticker get "$type" "$uri" "$name"', function(pair) {
                 var tokens = pair.value.split('=');
-                if (tokens.length > 1) val = tokens[1];
-                else val = pair.value;
+                if (tokens.length > 1) val.value = tokens[1];
+                else val.value = pair.value;
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        val.response = response;
                         _callback(Success(val));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1441,11 +1506,26 @@ class MusicPD
         });
     }
 
+    /**
+     * Set sticker value
+     * @param type 
+     * @param uri 
+     * @param name 
+     * @param value 
+     * @return Promise<Response>
+     */
     public function setSticker(type:String, uri:String, name:String, value:String):Promise<Response>
     {
         return runCommand('sticker set "$type" "$uri" "$name" "$value"');
     }
 
+    /**
+     * Delete sticker(s)
+     * @param type 
+     * @param uri 
+     * @param name if present, deletes given sticker otherwise delete all stickers for `uri`
+     * @return Promise<Response>
+     */
     public function deleteSticker(type:String, uri:String, ?name:String):Promise<Response>
     {
         var command = 'sticker delete "$type" "$uri"';
@@ -1455,19 +1535,26 @@ class MusicPD
         return runCommand(command);
     }
 
-    public function listStickers(type:String, uri:String):Promise<Array<NameValuePair>>
+    /**
+     * List all stickers for `type` and `uri`
+     * @param type 
+     * @param uri 
+     * @return Promise<CollectionResponse<NameValuePair>>
+     */
+    public function listStickers(type:String, uri:String):Promise<CollectionResponse<NameValuePair>>
     {
         return Future.async((_callback) -> {
-            var pairs = new Array<NameValuePair>();
+            var pairs = new CollectionResponse<NameValuePair>();
             runCommand('sticker list "$type" "$uri"', function(pair) {
                 if (pair.name == 'sticker') {
                     var tokens = pair.value.split('=');
                     if (tokens.length < 2) throw 'Unrecognized sticker response';
-                    pairs.push({name: tokens[0], value: tokens[1]});
+                    pairs.collection.push({name: tokens[0], value: tokens[1]});
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        pairs.response = response;
                         _callback(Success(pairs));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1476,47 +1563,85 @@ class MusicPD
         });
     }
 
-    public function findStickers(type:String, uri:String, name:String):Promise<Array<SongInfo>>
+    /**
+     * Find stickers for given name
+     * @param type 
+     * @param uri 
+     * @param name 
+     * @return Promise<SongInfos>
+     */
+    public function findStickers(type:String, uri:String, name:String):Promise<SongInfos>
     {
         return finder('sticker find "$type" "$uri" "$name"');
     }
 
-    public function findStickersWithValue(type:String, uri:String, name:String, value:String, comparison:Comparison = EqualComparison):Promise<Array<SongInfo>>
+    /**
+     * Find stickers by value
+     * @param type 
+     * @param uri 
+     * @param name 
+     * @param value 
+     * @param comparison 
+     * @return Promise<SongInfos>
+     */
+    public function findStickersWithValue(type:String, uri:String, name:String, value:String, comparison:Comparison = EqualComparison):Promise<SongInfos>
     {
         return finder('sticker find "$type" "$uri" "$name" $comparison "$value"');
     }
 
+    /**
+     * Close current connection to mpd
+     * @return Promise<Response>
+     */
     public function close():Promise<Response>
     {
         return runCommand('close');
     }
 
+    /**
+     * Tell mpd to shutdown. Do not use.
+     * @return Promise<Response>
+     */
     public function kill():Promise<Response>
     {
         return runCommand('kill');
     }
 
+    /**
+     * Authenticate with password `pass`
+     * @param pass 
+     * @return Promise<Response>
+     */
     public function passwordAuthenticate(pass:String):Promise<Response>
     {
         return runCommand('password "$pass"');
     }
 
+    /**
+     * Ping for testing connectivity to mpd
+     * @return Promise<Response>
+     */
     public function ping():Promise<Response>
     {
         return runCommand('ping');
     }
 
-    public function listTagTypes():Promise<Array<Tag>>
+    /**
+     * List available tag types
+     * @return Promise<CollectionResponse<Tag>>
+     */
+    public function listTagTypes():Promise<CollectionResponse<Tag>>
     {
         return Future.async((_callback) -> {
-            var tags = new Array<Tag>();
+            var tags = new CollectionResponse<Tag>();
             runCommand('tagtypes', function(pair) {
                 if (pair.name == 'tagtype') {
-                    tags.push(pair.value);
+                    tags.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        tags.response = response;
                         _callback(Success(tags));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1525,7 +1650,12 @@ class MusicPD
         });
     }
 
-    public function disableTagType(tags:Array<Tag>):Promise<Response>
+    /**
+     * Disable given tag types
+     * @param tags 
+     * @return Promise<Response>
+     */
+    public function disableTagTypes(tags:Array<Tag>):Promise<Response>
     {
         var command = 'tagtypes disable';
         for (tag in tags) {
@@ -1534,7 +1664,12 @@ class MusicPD
         return runCommand(command);
     }
 
-    public function enableTagType(tags:Array<Tag>):Promise<Response>
+    /**
+     * Enable given tag types
+     * @param tags 
+     * @return Promise<Response>
+     */
+    public function enableTagTypes(tags:Array<Tag>):Promise<Response>
     {
         var command = 'tagtypes enable';
         for (tag in tags) {
@@ -1543,66 +1678,117 @@ class MusicPD
         return runCommand(command);
     }
 
+    /**
+     * Disable all tag types
+     * @return Promise<Response>
+     */
     public function clearTagTypes():Promise<Response>
     {
         return runCommand('tagtypes clear');
     }
 
+    /**
+     * Enable all tag types
+     * @return Promise<Response>
+     */
     public function enableAllTagTypes():Promise<Response>
     {
         return runCommand('tagtypes all');
     }
 
+    /**
+     * Switch to partition `partition`
+     * @param partition 
+     * @return Promise<Response>
+     */
     public function switchToPartition(partition:String):Promise<Response>
     {
         return runCommand('partition "$partition"');
     }
 
+    /**
+     * List available partitions
+     * @return Promise<Response>
+     */
     public function listPartitions():Promise<Response>
     {
         return runCommand('listpartitions');
     }
 
+    /**
+     * Create partition named `partition`
+     * @param partition 
+     * @return Promise<Response>
+     */
     public function createPartition(partition:String):Promise<Response>
     {
         return runCommand('newpartition "$partition"');
     }
 
+    /**
+     * Delete partition `partition`
+     * @param partition 
+     * @return Promise<Response>
+     */
     public function deletePartition(partition:String):Promise<Response>
     {
         return runCommand('delpartition "$partition"');
     }
 
+    /**
+     * Move output `outputName` to current partition
+     * @param outputName 
+     * @return Promise<Response>
+     */
     public function moveOutput(outputName:String):Promise<Response>
     {
         return runCommand('moveoutput "$outputName"');
     }
 
+    /**
+     * Disable output `id`
+     * @param id 
+     * @return Promise<Response>
+     */
     public function disableOutput(id:Int):Promise<Response>
     {
         return runCommand('disableoutput $id');
     }
 
+    /**
+     * Enable output `id`
+     * @param id 
+     * @return Promise<Response>
+     */
     public function enableOutput(id:Int):Promise<Response>
     {
         return runCommand('enableoutput $id');
     }
 
+    /**
+     * Toggle enabled/disabled state of output `id`
+     * @param id 
+     * @return Promise<Response>
+     */
     public function toggleOutput(id:Int):Promise<Response>
     {
         return runCommand('toggleoutput $id');
     }
 
-    public function listOutputs():Promise<Array<AudioOutput>>
+    /**
+     * List available outputs
+     * @return Promise<CollectionResponse<AudioOutput>>
+     */
+    public function listOutputs():Promise<CollectionResponse<AudioOutput>>
     {
         return Future.async((_callback) -> {
-            var outputs = new Array<AudioOutput>();
+            var outputs = new CollectionResponse<AudioOutput>();
             var output = new AudioOutput(0);
             runCommand('outputs', function(pair) {
                 switch pair.name {
                     case 'outputid':
                         output = new AudioOutput(Std.parseInt(pair.value));
-                        outputs.push(output);
+                        outputs.collection.push(output);
                     case 'outputname':
                         output.name = pair.value;
                     case 'plugin':
@@ -1614,7 +1800,8 @@ class MusicPD
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        outputs.response = response;
                         _callback(Success(outputs));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1623,27 +1810,43 @@ class MusicPD
         });
     }
 
+    /**
+     * Set output attribute
+     * @param id 
+     * @param name 
+     * @param value 
+     * @return Promise<Response>
+     */
     public function setOutputAttribute(id:Int, name:String, value:String):Promise<Response>
     {
         return runCommand('outputset $id "$name" "$value"');
     }
 
+    /**
+     * Get current configuration
+     * @return Promise<Response>
+     */
     public function getConfig():Promise<Response>
     {
         return runCommand('config');
     }
 
-    public function listCommands():Promise<Array<String>>
+    /**
+     * Get list of available commands
+     * @return Promise<CollectionResponse<String>>
+     */
+    public function listCommands():Promise<CollectionResponse<String>>
     {
         return Future.async((_callback) -> {
-            var commands = new Array<String>();
+            var commands = new CollectionResponse<String>();
             runCommand('commands', function(pair) {
                 if (pair.name == 'command') {
-                    commands.push(pair.value);
+                    commands.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        commands.response = response;
                         _callback(Success(commands));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1652,17 +1855,22 @@ class MusicPD
         });
     }
 
-    public function listUnavailableCommands():Promise<Array<String>>
+    /**
+     * Get list of disabled commands
+     * @return Promise<CollectionResponse<String>>
+     */
+    public function listUnavailableCommands():Promise<CollectionResponse<String>>
     {
         return Future.async((_callback) -> {
-            var commands = new Array<String>();
+            var commands = new CollectionResponse<String>();
             runCommand('notcommands', function(pair) {
                 if (pair.name == 'command') {
-                    commands.push(pair.value);
+                    commands.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        commands.response = response;
                         _callback(Success(commands));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1671,17 +1879,22 @@ class MusicPD
         });
     }
 
-    public function listUrlHandlers():Promise<Array<String>>
+    /**
+     * Get list of uri handlers, as protocol strings
+     * @return Promise<CollectionResponse<String>>
+     */
+    public function listUriHandlers():Promise<CollectionResponse<String>>
     {
         return Future.async((_callback) -> {
-            var commands = new Array<String>();
+            var commands = new CollectionResponse<String>();
             runCommand('urlhandlers', function(pair) {
                 if (pair.name == 'handler') {
-                    commands.push(pair.value);
+                    commands.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        commands.response = response;
                         _callback(Success(commands));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1690,16 +1903,20 @@ class MusicPD
         });
     }
 
-    public function listDecoders():Promise<Array<Decoder>>
+    /**
+     * Get list of available decoders
+     * @return Promise<CollectionResponse<Decoder>>
+     */
+    public function listDecoders():Promise<CollectionResponse<Decoder>>
     {
         return Future.async((_callback) -> {
-            var decoders = new Array<Decoder>();
+            var decoders = new CollectionResponse<Decoder>();
             var decoder = new Decoder('');
             runCommand('decoders', function(pair) {
                 switch pair.name {
                     case 'plugin':
                         decoder = new Decoder(pair.value);
-                        decoders.push(decoder);
+                        decoders.collection.push(decoder);
                     case 'suffix':
                         decoder.suffixes.push(pair.value);
                     case 'mime_type':
@@ -1707,7 +1924,8 @@ class MusicPD
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        decoders.response = response;
                         _callback(Success(decoders));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1716,27 +1934,42 @@ class MusicPD
         });
     }
 
+    /**
+     * Subscribe to/open channel for messages
+     * @param channel 
+     * @return Promise<Response>
+     */
     public function subscribeToChannel(channel:String):Promise<Response>
     {
-        return runCommand('subscribe "$channel"');
+        return runCommand('subscribe $channel');
     }
 
+    /**
+     * Unsubscribe from channel
+     * @param channel 
+     * @return Promise<Response>
+     */
     public function unsubscribeFromChannel(channel:String):Promise<Response>
     {
-        return runCommand('unsubscribe "$channel"');
+        return runCommand('unsubscribe $channel');
     }
 
-    public function listChannels():Promise<Array<String>>
+    /**
+     * List available channels
+     * @return Promise<CollectionResponse<String>>
+     */
+    public function listChannels():Promise<CollectionResponse<String>>
     {
         return Future.async((_callback) -> {
-            var channels = new Array<String>();
+            var channels = new CollectionResponse<String>();
             runCommand('channels', function(pair) {
                 if (pair.name == 'channel') {
-                    channels.push(pair.value);
+                    channels.collection.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        channels.response = response;
                         _callback(Success(channels));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1745,21 +1978,26 @@ class MusicPD
         });
     }
 
-    public function readMessages():Promise<Array<ChannelMessages>>
+    /**
+     * Read messages from all subscribed channels
+     * @return Promise<CollectionResponse<ChannelMessages>>
+     */
+    public function readMessages():Promise<CollectionResponse<ChannelMessages>>
     {
         return Future.async((_callback) -> {
-            var channelMessages = new Array<ChannelMessages>();
+            var channelMessages = new CollectionResponse<ChannelMessages>();
             var channelMessage = new ChannelMessages('');
             runCommand('readmessages', function(pair) {
                 if (pair.name == 'channel') {
                     channelMessage = new ChannelMessages(pair.value);
-                    channelMessages.push(channelMessage);
+                    channelMessages.collection.push(channelMessage);
                 } else if (pair.name == 'message') {
                     channelMessage.messages.push(pair.value);
                 }
             }).handle((outcome) -> {
                 switch outcome {
-                    case Success(_):
+                    case Success(response):
+                        channelMessages.response = response;
                         _callback(Success(channelMessages));
                     case Failure(failure):
                         _callback(Failure(failure));
@@ -1768,8 +2006,14 @@ class MusicPD
         });
     }
 
+    /**
+     * Send message `text` to channel `channel`
+     * @param channel 
+     * @param text 
+     * @return Promise<Response>
+     */
     public function sendMessage(channel:String, text:String):Promise<Response>
     {
-        return runCommand('sendmessage "$channel" "$text"');
+        return runCommand('sendmessage $channel "$text"');
     }
 }

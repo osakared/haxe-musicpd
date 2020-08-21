@@ -2,11 +2,6 @@ package mpd;
 
 import haxe.io.Bytes;
 
-typedef NameValuePair = {
-    var name:String;
-    var value:String;
-}
-
 class Response
 {
     public var binary:Bytes = null;

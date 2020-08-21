@@ -18,12 +18,14 @@ or
 haxelib install musicpd
 ```
 
-## Todo
+## Documentation
 
-- fix random Eof errors in thinamp
-- submit to haxelib 1st version
-- add documentation to functions and generate haxe documentation (dox)
-- make any transpiled libs that would help people (if the language doesn't already have a good mpd client)
-- add tests, at least in gitlab
-- implement command lists
-- implement objects to represent filters instead of making users of the api escape themselves
+You can see the [api documentation](https://grig.tech/api/mpd/musicpd) at [grig's website](https://grig.tech).
+
+## Contributing
+
+Please see [CONTRIBUTING](CONTRIBUTING.md)
+
+## License
+
+MIT see [LICENSE](LICENSE)

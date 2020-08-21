@@ -1,5 +1,6 @@
 package mpd;
 
+import haxe.Exception;
 import haxe.io.Bytes;
 import haxe.io.BytesOutput;
 import mpd.Response.NameValuePair;

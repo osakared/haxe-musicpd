@@ -8,7 +8,6 @@ lix install gitlab:haxe-grig/haxe-musicpd
 
 ## Todo
 
-- everything from listfiles on
 - fix random Eof errors in thinamp
 - submit to haxelib 1st version
 - add documentation to functions and generate haxe documentation (dox)

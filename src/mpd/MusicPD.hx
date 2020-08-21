@@ -43,6 +43,7 @@ enum abstract FileSystemEntryType(String)
 {
     var FileEntry = 'file';
     var DirectoryEntry = 'directory';
+    var PlaylistEntry = 'playlist';
 }
 
 enum abstract Subsystem(String)
@@ -76,6 +77,7 @@ enum abstract Tag(String)
     var NameTag = 'name';
     var GenreTag = 'genre';
     var DateTag = 'date';
+    var OriginalDate = 'originaldate';
     var ComposerTag = 'composer';
     var PerformerTag = 'performer';
     var ConductorTag = 'conductor';
@@ -90,6 +92,47 @@ enum abstract Tag(String)
     var MusicBrainzTrackIDTag = 'musicbrainz_trackid';
     var MusicBrainzReleaseTrackIDTag = 'musicbrainz_releasetrackid';
     var MusicBrainzWorkIDTag = 'musicbrainz_workid';
+
+    @:from
+    static public function fromString(s:String)
+    {
+        return switch s.toLowerCase() {
+            case 'artist': ArtistTag;
+            case 'artistsort': ArtistSortTag;
+            case 'album': AlbumTag;
+            case 'albumsort': AlbumSortTag;
+            case 'albumartist': AlbumArtistTag;
+            case 'albumartistsort': AlbumArtistSortTag;
+            case 'title': TitleTag;
+            case 'track': TrackTag;
+            case 'name': NameTag;
+            case 'genre': GenreTag;
+            case 'date': DateTag;
+            case 'originaldate': OriginalDate;
+            case 'composer': ComposerTag;
+            case 'performer': PerformerTag;
+            case 'conductor': ConductorTag;
+            case 'work': WorkTag;
+            case 'grouping': GroupingTag;
+            case 'comment': CommentTag;
+            case 'disc': DiscTag;
+            case 'label': LabelTag;
+            case 'musicbrainz_artistid': MusicBrainzArtistIDTag;
+            case 'musicbrainz_albumid': MusicBrainzAlbumIDTag;
+            case 'musicbrainz_albumartistid': MusicBrainzAlbumArtistIDTag;
+            case 'musicbrainz_trackid': MusicBrainzTrackIDTag;
+            case 'musicbrainz_releasetrackid': MusicBrainzReleaseTrackIDTag;
+            case 'musicbrainz_workid': MusicBrainzWorkIDTag;
+            default: trace('unrecognized tag $s'); ArtistTag;
+        }
+    }
+}
+
+enum abstract Comparison(String)
+{
+    var EqualComparison = '=';
+    var LessComparison = '<';
+    var GreaterComparison = '>';
 }
 
 // So I can swap out for a better structure more easily later
@@ -138,6 +181,7 @@ typedef SongInfo = {
     var ?pos:Float;
     var ?id:Int;
     var ?response:Response;
+    var ?sticker:NameValuePair;
 }
 
 typedef PlaylistInfo = {
@@ -202,6 +246,16 @@ typedef ListResult = {
     var name:String;
 }
 
+typedef Mount = {
+    var mount:String;
+    var ?storage:String;
+}
+
+typedef Neighbor = {
+    var neighbor:String;
+    var ?name:String;
+}
+
 class ListResultGroup
 {
     public var groupType:Null<String> = null;
@@ -210,6 +264,43 @@ class ListResultGroup
 
     public function new()
     {
+    }
+}
+
+class AudioOutput
+{
+    public var id:Int;
+    public var name:String;
+    public var plugin:String;
+    public var outputEnabled:Bool = false;
+    public var attributes = new Array<NameValuePair>();
+
+    public function new(_id:Int)
+    {
+        id = _id;
+    }
+}
+
+class Decoder
+{
+    public var plugin:String;
+    public var suffixes = new Array<String>();
+    public var mimeTypes = new Array<String>();
+
+    public function new(_plugin:String)
+    {
+        plugin = _plugin;
+    }
+}
+
+class ChannelMessages
+{
+    public var channel:String;
+    public var messages = new Array<String>();
+
+    public function new(_channel:String)
+    {
+        channel = _channel;
     }
 }
 
@@ -314,6 +405,9 @@ class MusicPD
             case 'directory':
                 songInfo.file = pair.value;
                 songInfo.entryType = DirectoryEntry;
+            case 'playlist':
+                songInfo.file = pair.value;
+                songInfo.entryType = PlaylistEntry;
             case 'last-modified':
                 songInfo.lastModified = parseDate(pair.value);
             case 'artist':
@@ -340,6 +434,10 @@ class MusicPD
                 songInfo.pos = Std.parseFloat(pair.value);
             case 'id':
                 songInfo.id = Std.parseInt(pair.value);
+            case 'sticker':
+                var tokens = pair.value.split('=');
+                if (tokens.length < 2) throw 'Unrecognized sticker value';
+                songInfo.sticker = { name: tokens[0], value: tokens[1] };
         }
     }
 
@@ -678,14 +776,14 @@ class MusicPD
 
     public function add(uri:String):Promise<Response>
     {
-        return runCommand('add $uri');
+        return runCommand('add "$uri"');
     }
 
     public function addID(uri:String, ?position:Int):Promise<SongID>
     {
         return Future.async((_callback) -> {
             var songID:SongID = {};
-            var command = 'addid $uri'; 
+            var command = 'addid "$uri"'; 
             if (position != null) {
                 command += ' $position';
             }
@@ -972,7 +1070,7 @@ class MusicPD
 
     public function addURIToPlaylist(name:String, uri:String):Promise<Response>
     {
-        return runCommand('playlistadd $name $uri');
+        return runCommand('playlistadd $name "$uri"');
     }
 
     public function clearPlaylist(name:String):Promise<Response>
@@ -1185,5 +1283,492 @@ class MusicPD
     public function listAllInfo(uri:String):Promise<Array<SongInfo>>
     {
         return finder('listallinfo "$uri"');
+    }
+
+    /**
+     * Lists the contents of the directory `uri`, including files are not recognized by mpd
+     */
+    public function listFiles(uri:String):Promise<Array<SongInfo>>
+    {
+        return finder('listfiles "$uri"');
+    }
+
+    /**
+     * Lists the contents of the directory `uri`.
+     */
+    public function listInfo(uri:String):Promise<Array<SongInfo>>
+    {
+        return finder('lsinfo "$uri"');
+    }
+
+    /**
+     * Read “comments” (i.e. key-value pairs) from the file specified by `uri`
+     * @param uri path relative to the music directory or an absolute path
+     * @return Promise<Response>
+     */
+    public function readComments(uri:String):Promise<Response>
+    {
+        return runCommand('readcomments "$uri"');
+    }
+
+    public function getPicture(uri:String, offset:Int):Promise<Response>
+    {
+        return runCommand('readpicture "$uri" $offset');
+    }
+
+    public function readPicture(uri:String):Promise<Bytes>
+    {
+        return Future.async((_callback) -> {
+            var output = new BytesOutput();
+            bytesIterate(getPicture, uri, 0, output, _callback);
+        });
+    }
+
+    public function search(filter:Filter, ?sort:Tag, ?window:Range):Promise<Array<SongInfo>>
+    {
+        return finder('search', filter, sort, window);
+    }
+
+    public function searchAndAdd(filter:Filter, ?sort:Tag, ?window:Range):Promise<Response>
+    {
+        var command = 'searchadd "$filter"';
+        if (sort != null) {
+            command += ' $sort';
+        }
+        if (window != null) {
+            command += ' ${argFromRange(window)}';
+        }
+        return runCommand(command);
+    }
+
+    public function searchAndAddToPlaylist(playlist:String, filter:String, ?sort:Tag, ?window:Range):Promise<Response>
+    {
+        var command = 'searchaddpl "$playlist" "$filter"';
+        if (sort != null) {
+            command += ' $sort';
+        }
+        if (window != null) {
+            command += ' ${argFromRange(window)}';
+        }
+        return runCommand(command);
+    }
+
+    public function update(uri:String):Promise<Response>
+    {
+        return runCommand('update "$uri"');
+    }
+
+    public function rescan(uri:String):Promise<Response>
+    {
+        return runCommand('rescan "$uri"');
+    }
+
+    public function mount(path:String, uri:String):Promise<Response>
+    {
+        return runCommand('mount "$path" "$uri"');
+    }
+
+    public function unmount(path:String):Promise<Response>
+    {
+        return runCommand('unmount "$path"');
+    }
+
+    public function listMounts():Promise<Array<Mount>>
+    {
+        return Future.async((_callback) -> {
+            var mounts = new Array<Mount>();
+            var mount:Mount = { mount: '' };
+            runCommand('listmounts', function(pair) {
+                if (pair.name == 'mount') {
+                    mount = { mount: pair.value };
+                    mounts.push(mount);
+                }
+                else if (pair.name == 'storage') {
+                    mount.storage = pair.value;
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(mounts));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function listNeighbors():Promise<Array<Neighbor>>
+    {
+        return Future.async((_callback) -> {
+            var neighbors = new Array<Neighbor>();
+            var neighbor:Neighbor = { neighbor: '' };
+            runCommand('listneighbors', function(pair) {
+                if (pair.name == 'neighbor') {
+                    neighbor = { neighbor: pair.value };
+                    neighbors.push(neighbor);
+                }
+                else if (pair.name == 'name') {
+                    neighbor.name = pair.value;
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(neighbors));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function getSticker(type:String, uri:String, name:String):Promise<String>
+    {
+        return Future.async((_callback) -> {
+            var val = '';
+            runCommand('sticker get "$type" "$uri" "$name"', function(pair) {
+                var tokens = pair.value.split('=');
+                if (tokens.length > 1) val = tokens[1];
+                else val = pair.value;
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(val));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function setSticker(type:String, uri:String, name:String, value:String):Promise<Response>
+    {
+        return runCommand('sticker set "$type" "$uri" "$name" "$value"');
+    }
+
+    public function deleteSticker(type:String, uri:String, ?name:String):Promise<Response>
+    {
+        var command = 'sticker delete "$type" "$uri"';
+        if (name != null) {
+            command += ' $name';
+        }
+        return runCommand(command);
+    }
+
+    public function listStickers(type:String, uri:String):Promise<Array<NameValuePair>>
+    {
+        return Future.async((_callback) -> {
+            var pairs = new Array<NameValuePair>();
+            runCommand('sticker list "$type" "$uri"', function(pair) {
+                if (pair.name == 'sticker') {
+                    var tokens = pair.value.split('=');
+                    if (tokens.length < 2) throw 'Unrecognized sticker response';
+                    pairs.push({name: tokens[0], value: tokens[1]});
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(pairs));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function findStickers(type:String, uri:String, name:String):Promise<Array<SongInfo>>
+    {
+        return finder('sticker find "$type" "$uri" "$name"');
+    }
+
+    public function findStickersWithValue(type:String, uri:String, name:String, value:String, comparison:Comparison = EqualComparison):Promise<Array<SongInfo>>
+    {
+        return finder('sticker find "$type" "$uri" "$name" $comparison "$value"');
+    }
+
+    public function close():Promise<Response>
+    {
+        return runCommand('close');
+    }
+
+    public function kill():Promise<Response>
+    {
+        return runCommand('kill');
+    }
+
+    public function passwordAuthenticate(pass:String):Promise<Response>
+    {
+        return runCommand('password "$pass"');
+    }
+
+    public function ping():Promise<Response>
+    {
+        return runCommand('ping');
+    }
+
+    public function listTagTypes():Promise<Array<Tag>>
+    {
+        return Future.async((_callback) -> {
+            var tags = new Array<Tag>();
+            runCommand('tagtypes', function(pair) {
+                if (pair.name == 'tagtype') {
+                    tags.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(tags));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function disableTagType(tags:Array<Tag>):Promise<Response>
+    {
+        var command = 'tagtypes disable';
+        for (tag in tags) {
+            command + ' $tag';
+        }
+        return runCommand(command);
+    }
+
+    public function enableTagType(tags:Array<Tag>):Promise<Response>
+    {
+        var command = 'tagtypes enable';
+        for (tag in tags) {
+            command + ' $tag';
+        }
+        return runCommand(command);
+    }
+
+    public function clearTagTypes():Promise<Response>
+    {
+        return runCommand('tagtypes clear');
+    }
+
+    public function enableAllTagTypes():Promise<Response>
+    {
+        return runCommand('tagtypes all');
+    }
+
+    public function switchToPartition(partition:String):Promise<Response>
+    {
+        return runCommand('partition "$partition"');
+    }
+
+    public function listPartitions():Promise<Response>
+    {
+        return runCommand('listpartitions');
+    }
+
+    public function createPartition(partition:String):Promise<Response>
+    {
+        return runCommand('newpartition "$partition"');
+    }
+
+    public function deletePartition(partition:String):Promise<Response>
+    {
+        return runCommand('delpartition "$partition"');
+    }
+
+    public function moveOutput(outputName:String):Promise<Response>
+    {
+        return runCommand('moveoutput "$outputName"');
+    }
+
+    public function disableOutput(id:Int):Promise<Response>
+    {
+        return runCommand('disableoutput $id');
+    }
+
+    public function enableOutput(id:Int):Promise<Response>
+    {
+        return runCommand('enableoutput $id');
+    }
+
+    public function toggleOutput(id:Int):Promise<Response>
+    {
+        return runCommand('toggleoutput $id');
+    }
+
+    public function listOutputs():Promise<Array<AudioOutput>>
+    {
+        return Future.async((_callback) -> {
+            var outputs = new Array<AudioOutput>();
+            var output = new AudioOutput(0);
+            runCommand('outputs', function(pair) {
+                switch pair.name {
+                    case 'outputid':
+                        output = new AudioOutput(Std.parseInt(pair.value));
+                        outputs.push(output);
+                    case 'outputname':
+                        output.name = pair.value;
+                    case 'plugin':
+                        output.plugin = pair.value;
+                    case 'outputenabled':
+                        output.outputEnabled = Std.parseInt(pair.value) == 1;
+                    default:
+                        output.attributes.push(pair);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(outputs));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function setOutputAttribute(id:Int, name:String, value:String):Promise<Response>
+    {
+        return runCommand('outputset $id "$name" "$value"');
+    }
+
+    public function getConfig():Promise<Response>
+    {
+        return runCommand('config');
+    }
+
+    public function listCommands():Promise<Array<String>>
+    {
+        return Future.async((_callback) -> {
+            var commands = new Array<String>();
+            runCommand('commands', function(pair) {
+                if (pair.name == 'command') {
+                    commands.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(commands));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function listUnavailableCommands():Promise<Array<String>>
+    {
+        return Future.async((_callback) -> {
+            var commands = new Array<String>();
+            runCommand('notcommands', function(pair) {
+                if (pair.name == 'command') {
+                    commands.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(commands));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function listUrlHandlers():Promise<Array<String>>
+    {
+        return Future.async((_callback) -> {
+            var commands = new Array<String>();
+            runCommand('urlhandlers', function(pair) {
+                if (pair.name == 'handler') {
+                    commands.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(commands));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function listDecoders():Promise<Array<Decoder>>
+    {
+        return Future.async((_callback) -> {
+            var decoders = new Array<Decoder>();
+            var decoder = new Decoder('');
+            runCommand('decoders', function(pair) {
+                switch pair.name {
+                    case 'plugin':
+                        decoder = new Decoder(pair.value);
+                        decoders.push(decoder);
+                    case 'suffix':
+                        decoder.suffixes.push(pair.value);
+                    case 'mime_type':
+                        decoder.mimeTypes.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(decoders));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function subscribeToChannel(channel:String):Promise<Response>
+    {
+        return runCommand('subscribe "$channel"');
+    }
+
+    public function unsubscribeFromChannel(channel:String):Promise<Response>
+    {
+        return runCommand('unsubscribe "$channel"');
+    }
+
+    public function listChannels():Promise<Array<String>>
+    {
+        return Future.async((_callback) -> {
+            var channels = new Array<String>();
+            runCommand('channels', function(pair) {
+                if (pair.name == 'channel') {
+                    channels.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(channels));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function readMessages():Promise<Array<ChannelMessages>>
+    {
+        return Future.async((_callback) -> {
+            var channelMessages = new Array<ChannelMessages>();
+            var channelMessage = new ChannelMessages('');
+            runCommand('readmessages', function(pair) {
+                if (pair.name == 'channel') {
+                    channelMessage = new ChannelMessages(pair.value);
+                    channelMessages.push(channelMessage);
+                } else if (pair.name == 'message') {
+                    channelMessage.messages.push(pair.value);
+                }
+            }).handle((outcome) -> {
+                switch outcome {
+                    case Success(_):
+                        _callback(Success(channelMessages));
+                    case Failure(failure):
+                        _callback(Failure(failure));
+                }
+            });
+        });
+    }
+
+    public function sendMessage(channel:String, text:String):Promise<Response>
+    {
+        return runCommand('sendmessage "$channel" "$text"');
     }
 }

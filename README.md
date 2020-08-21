@@ -6,6 +6,18 @@ If you use lix, you can install the latest version with:
 lix install gitlab:haxe-grig/haxe-musicpd
 ```
 
+Or from haxelib
+
+```sh
+lix install haxelib:musicpd
+```
+
+or
+
+```sh
+haxelib install musicpd
+```
+
 ## Todo
 
 - fix random Eof errors in thinamp

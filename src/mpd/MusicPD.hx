@@ -453,7 +453,7 @@ class MusicPD
             runCommand('currentsong', (pair) -> {
                 try {
                     updateSongInfoFromPair(songInfo, pair);
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -562,7 +562,7 @@ class MusicPD
                         case 'error':
                             status.error = pair.value;
                     }
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -597,7 +597,7 @@ class MusicPD
                         case 'db_update':
                             stats.dbUpdate = Date.fromTime(Std.parseInt(pair.value));
                     }
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -700,7 +700,7 @@ class MusicPD
                                     throw 'Unknown replay gain mode: ${pair.value}';
                             }
                     }
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -793,7 +793,7 @@ class MusicPD
                         case 'Id':
                             songID.id = Std.parseInt(pair.value);
                     }
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -868,7 +868,7 @@ class MusicPD
                 }
                 try {
                     updateSongInfoFromPair(songInfo, pair);
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {
@@ -935,7 +935,7 @@ class MusicPD
                         case 'id':
                             posAndID.id = Std.parseInt(pair.value);
                     }
-                } catch(e) {
+                } catch(e:haxe.Exception) {
                     _callback(Failure(Error.asError(e)));
                 }
             }).handle((outcome) -> {

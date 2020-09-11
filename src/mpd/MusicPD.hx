@@ -227,7 +227,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var status:Status = {};
-            runCommand('status', function(pair) {
+            runCommand('status', (pair) -> {
                 switch pair.name {
                     case 'partition':
                         status.partition = pair.value;
@@ -320,7 +320,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var stats:Stats = {};
-            runCommand('stats', function(pair) {
+            runCommand('stats', (pair) -> {
                 switch pair.name {
                     case 'uptime':
                         stats.uptime = Std.parseInt(pair.value);
@@ -446,7 +446,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var replayGainStatus:ReplayGainStatus = {};
-            runCommand('replay_gain_status', function(pair) {
+            runCommand('replay_gain_status', (pair) -> {
                 switch pair.name {
                     case 'replay_gain_mode':
                         replayGainStatus.replayGainMode = pair.value;
@@ -585,7 +585,7 @@ class MusicPD
             if (position != null) {
                 command += ' $position';
             }
-            runCommand(command, function(pair) {
+            runCommand(command, (pair) -> {
                 switch pair.name.toLowerCase() {
                     case 'id':
                         songID.id = Std.parseInt(pair.value);
@@ -769,7 +769,7 @@ class MusicPD
             if (range != null) {
                 command += ' ${argFromRange(range)}';
             }
-            runCommand(command, function(pair) {
+            runCommand(command, (pair) -> {
                 if (firstTag == '' || firstTag == pair.name) {
                     firstTag = pair.name;
                     posAndID = {}
@@ -907,7 +907,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var files = new CollectionResponse<String>();
-            runCommand('listplaylist $name', function(pair) {
+            runCommand('listplaylist $name', (pair) -> {
                 if (pair.name.toLowerCase() == 'file') {
                     files.collection.push(pair.value);
                 }
@@ -943,7 +943,7 @@ class MusicPD
             var playlistInfos = new CollectionResponse<PlaylistInfo>();
             var firstTag:String = '';
             var playlistInfo:PlaylistInfo = {};
-            runCommand('listplaylists', function(pair) {
+            runCommand('listplaylists', (pair) -> {
                 if (firstTag == '') {
                     firstTag = pair.name;
                     playlistInfos.collection.push(playlistInfo);
@@ -1124,7 +1124,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var countInfos = new CollectionResponse<CountInfo>();
             var countInfo:CountInfo = {};
-            runCommand(command, function(pair) {
+            runCommand(command, (pair) -> {
                 switch pair.name {
                     case 'songs':
                         countInfo.count = Std.parseInt(pair.value);
@@ -1155,7 +1155,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var key:StringResponse = {};
-            runCommand('getfingerprint "$uri"', function(pair) {
+            runCommand('getfingerprint "$uri"', (pair) -> {
                 if (pair.name == 'chromaprint') {
                     key.value = pair.value;
                 }
@@ -1221,7 +1221,7 @@ class MusicPD
                 listResultGroup = new ListResultGroup();
                 listResultGroups.collection.push(listResultGroup);
             }
-            runCommand(command, function(pair) {
+            runCommand(command, (pair) -> {
                 if (group != null && pair.name.toLowerCase().startsWith('$group')) {
                     listResultGroup = new ListResultGroup();
                     listResultGroup.groupType = pair.name;
@@ -1249,7 +1249,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var entries = new CollectionResponse<FileSystemEntry>();
-            runCommand('listall "$uri"', function(pair) {
+            runCommand('listall "$uri"', (pair) -> {
                 var type = switch pair.name {
                     case 'file':
                         FileSystemEntryType.FileEntry;
@@ -1430,7 +1430,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var mounts = new CollectionResponse<Mount>();
             var mount:Mount = { mount: '' };
-            runCommand('listmounts', function(pair) {
+            runCommand('listmounts', (pair) -> {
                 if (pair.name == 'mount') {
                     mount = { mount: pair.value };
                     mounts.collection.push(mount);
@@ -1459,7 +1459,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var neighbors = new CollectionResponse<Neighbor>();
             var neighbor:Neighbor = { neighbor: '' };
-            runCommand('listneighbors', function(pair) {
+            runCommand('listneighbors', (pair) -> {
                 if (pair.name == 'neighbor') {
                     neighbor = { neighbor: pair.value };
                     neighbors.collection.push(neighbor);
@@ -1490,7 +1490,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var val:StringResponse = {};
-            runCommand('sticker get "$type" "$uri" "$name"', function(pair) {
+            runCommand('sticker get "$type" "$uri" "$name"', (pair) -> {
                 var tokens = pair.value.split('=');
                 if (tokens.length > 1) val.value = tokens[1];
                 else val.value = pair.value;
@@ -1545,7 +1545,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var pairs = new CollectionResponse<NameValuePair>();
-            runCommand('sticker list "$type" "$uri"', function(pair) {
+            runCommand('sticker list "$type" "$uri"', (pair) -> {
                 if (pair.name == 'sticker') {
                     var tokens = pair.value.split('=');
                     if (tokens.length < 2) throw 'Unrecognized sticker response';
@@ -1634,7 +1634,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var tags = new CollectionResponse<Tag>();
-            runCommand('tagtypes', function(pair) {
+            runCommand('tagtypes', (pair) -> {
                 if (pair.name == 'tagtype') {
                     tags.collection.push(pair.value);
                 }
@@ -1784,7 +1784,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var outputs = new CollectionResponse<AudioOutput>();
             var output = new AudioOutput(0);
-            runCommand('outputs', function(pair) {
+            runCommand('outputs', (pair) -> {
                 switch pair.name {
                     case 'outputid':
                         output = new AudioOutput(Std.parseInt(pair.value));
@@ -1839,7 +1839,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var commands = new CollectionResponse<String>();
-            runCommand('commands', function(pair) {
+            runCommand('commands', (pair) -> {
                 if (pair.name == 'command') {
                     commands.collection.push(pair.value);
                 }
@@ -1863,7 +1863,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var commands = new CollectionResponse<String>();
-            runCommand('notcommands', function(pair) {
+            runCommand('notcommands', (pair) -> {
                 if (pair.name == 'command') {
                     commands.collection.push(pair.value);
                 }
@@ -1887,7 +1887,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var commands = new CollectionResponse<String>();
-            runCommand('urlhandlers', function(pair) {
+            runCommand('urlhandlers', (pair) -> {
                 if (pair.name == 'handler') {
                     commands.collection.push(pair.value);
                 }
@@ -1912,7 +1912,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var decoders = new CollectionResponse<Decoder>();
             var decoder = new Decoder('');
-            runCommand('decoders', function(pair) {
+            runCommand('decoders', (pair) -> {
                 switch pair.name {
                     case 'plugin':
                         decoder = new Decoder(pair.value);
@@ -1962,7 +1962,7 @@ class MusicPD
     {
         return Future.async((_callback) -> {
             var channels = new CollectionResponse<String>();
-            runCommand('channels', function(pair) {
+            runCommand('channels', (pair) -> {
                 if (pair.name == 'channel') {
                     channels.collection.push(pair.value);
                 }
@@ -1987,7 +1987,7 @@ class MusicPD
         return Future.async((_callback) -> {
             var channelMessages = new CollectionResponse<ChannelMessages>();
             var channelMessage = new ChannelMessages('');
-            runCommand('readmessages', function(pair) {
+            runCommand('readmessages', (pair) -> {
                 if (pair.name == 'channel') {
                     channelMessage = new ChannelMessages(pair.value);
                     channelMessages.collection.push(channelMessage);

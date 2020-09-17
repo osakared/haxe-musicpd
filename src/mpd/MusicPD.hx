@@ -1,4 +1,4 @@
-package mpd;
+package mpd; #if (target.sys)
 
 import haxe.Exception;
 import haxe.io.Bytes;
@@ -2017,3 +2017,5 @@ class MusicPD
         return runCommand('sendmessage $channel "$text"');
     }
 }
+
+#end

@@ -11,8 +11,8 @@
   "contributors": [
     "thomasjwebb"
   ],
-  "releasenote": "More robust handling of errors and clearer documentation.",
-  "version": "0.0.2",
+  "releasenote": "Improved error handling.",
+  "version": "0.0.3",
   "dependencies": {
     "tink_core": "1.26.0"
   }

@@ -37,12 +37,13 @@ class MusicPD
         var socket = new Socket();
         return Future.async((_callback) -> {
             // need to handle exception and also work asynchronously in hxnodejs
+            var initialResponse = '';
             try {
                 socket.connect(new Host(host), port);
+                initialResponse = socket.input.readLine();
             } catch (e:haxe.Exception) {
                 _callback(Failure(Error.withData(e.message, e)));
             }
-            var initialResponse = socket.input.readLine();
             var tokens = initialResponse.split(' ');
             if (tokens.length != 3 || tokens[0] != 'OK' || tokens[1] != 'MPD') {
                 _callback(Failure(Error.asError(ConnectError.InvalidResponseString(initialResponse))));

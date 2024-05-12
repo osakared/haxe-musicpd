@@ -85,9 +85,9 @@ class MusicPD
 
     private function runCommand(command:String, onPair:(pair:NameValuePair)->Void = null):Promise<Response>
     {
-        socket.output.writeString(command + '\n');
         return Future.async((_callback) -> {
             try {
+                socket.output.writeString(command + '\n');
                 var response = new Response();
                 var namePairMatcher = new EReg('^(.+):\\s+(.*)$', '');
                 while (true) {
@@ -227,89 +227,93 @@ class MusicPD
     public function getStatus():Promise<Status>
     {
         return Future.async((_callback) -> {
-            var status:Status = {};
-            runCommand('status', (pair) -> {
-                switch pair.name {
-                    case 'partition':
-                        status.partition = pair.value;
-                    case 'volume':
-                        status.volume = Std.parseInt(pair.value);
-                    case 'repeat':
-                        status.repeat = parseBool(pair.value);
-                    case 'random':
-                        status.random = parseBool(pair.value);
-                    case 'single':
-                        status.single = switch pair.value {
-                            case '0':
-                                SingleOff;
-                            case '1':
-                                SingleOn;
-                            case 'oneshot':
-                                SingleOneshot;
-                            default:
-                                throw 'Unrecognized single state: ${pair.value}';
-                        }
-                    case 'consume':
-                        status.consume = parseBool(pair.value);
-                    case 'playlist':
-                        status.playlist = Std.parseInt(pair.value);
-                    case 'playlistlength':
-                        status.playlistLength = Std.parseInt(pair.value);
-                    case 'state':
-                        status.state = switch pair.value {
-                            case 'play':
-                                Play;
-                            case 'stop':
-                                Stop;
-                            case 'pause':
-                                Pause;
-                            default:
-                                throw 'Unrecognized play state: ${pair.value}';
-                        }
-                    case 'song':
-                        status.song = Std.parseInt(pair.value);
-                    case 'songid':
-                        status.songID = Std.parseInt(pair.value);
-                    case 'nextsong':
-                        status.nextSong = Std.parseInt(pair.value);
-                    case 'nextsongid':
-                        status.nextSongID = Std.parseInt(pair.value);
-                    case 'elapsed':
-                        status.elapsed = Std.parseFloat(pair.value);
-                    case 'time':
-                        status.elapsed = Std.parseFloat(pair.value);
-                    case 'duration':
-                        status.duration = Std.parseFloat(pair.value);
-                    case 'bitrate':
-                        status.bitrate = Std.parseInt(pair.value);
-                    case 'xfade':
-                        status.xfade = Std.parseFloat(pair.value);
-                    case 'mixrampdb':
-                        status.mixRampDB = Std.parseFloat(pair.value);
-                    case 'mixrampdelay':
-                        status.mixRampDelay = Std.parseFloat(pair.value);
-                    case 'audio':
-                        var parts = pair.value.split(':');
-                        if (parts.length != 3) throw 'Invalid audio string';
-                        status.audio = {
-                            sampleRate: Std.parseInt(parts[0]),
-                            bits: Std.parseInt(parts[1]),
-                            channels: Std.parseInt(parts[2])
-                        };
-                    case 'updating_db':
-                        status.updatingDB = Std.parseInt(pair.value);
-                    case 'error':
-                        status.error = pair.value;
-                }
-            }).handle((outcome) -> {
-                switch outcome {
-                    case Success(response):
-                        status.response = response;
-                        _callback(Success(status));
-                    case Failure(error):
-                        _callback(Failure(error));
-                }
-            });
+            try {
+                var status:Status = {};
+                runCommand('status', (pair) -> {
+                    switch pair.name {
+                        case 'partition':
+                            status.partition = pair.value;
+                        case 'volume':
+                            status.volume = Std.parseInt(pair.value);
+                        case 'repeat':
+                            status.repeat = parseBool(pair.value);
+                        case 'random':
+                            status.random = parseBool(pair.value);
+                        case 'single':
+                            status.single = switch pair.value {
+                                case '0':
+                                    SingleOff;
+                                case '1':
+                                    SingleOn;
+                                case 'oneshot':
+                                    SingleOneshot;
+                                default:
+                                    throw 'Unrecognized single state: ${pair.value}';
+                            }
+                        case 'consume':
+                            status.consume = parseBool(pair.value);
+                        case 'playlist':
+                            status.playlist = Std.parseInt(pair.value);
+                        case 'playlistlength':
+                            status.playlistLength = Std.parseInt(pair.value);
+                        case 'state':
+                            status.state = switch pair.value {
+                                case 'play':
+                                    Play;
+                                case 'stop':
+                                    Stop;
+                                case 'pause':
+                                    Pause;
+                                default:
+                                    throw 'Unrecognized play state: ${pair.value}';
+                            }
+                        case 'song':
+                            status.song = Std.parseInt(pair.value);
+                        case 'songid':
+                            status.songID = Std.parseInt(pair.value);
+                        case 'nextsong':
+                            status.nextSong = Std.parseInt(pair.value);
+                        case 'nextsongid':
+                            status.nextSongID = Std.parseInt(pair.value);
+                        case 'elapsed':
+                            status.elapsed = Std.parseFloat(pair.value);
+                        case 'time':
+                            status.elapsed = Std.parseFloat(pair.value);
+                        case 'duration':
+                            status.duration = Std.parseFloat(pair.value);
+                        case 'bitrate':
+                            status.bitrate = Std.parseInt(pair.value);
+                        case 'xfade':
+                            status.xfade = Std.parseFloat(pair.value);
+                        case 'mixrampdb':
+                            status.mixRampDB = Std.parseFloat(pair.value);
+                        case 'mixrampdelay':
+                            status.mixRampDelay = Std.parseFloat(pair.value);
+                        case 'audio':
+                            var parts = pair.value.split(':');
+                            if (parts.length != 3) throw 'Invalid audio string';
+                            status.audio = {
+                                sampleRate: Std.parseInt(parts[0]),
+                                bits: Std.parseInt(parts[1]),
+                                channels: Std.parseInt(parts[2])
+                            };
+                        case 'updating_db':
+                            status.updatingDB = Std.parseInt(pair.value);
+                        case 'error':
+                            status.error = pair.value;
+                    }
+                }).handle((outcome) -> {
+                    switch outcome {
+                        case Success(response):
+                            status.response = response;
+                            _callback(Success(status));
+                        case Failure(error):
+                            _callback(Failure(error));
+                    }
+                });
+            } catch (e) {
+                _callback(Failure(Error.asError(e)));
+            }
         });
     }
 
@@ -478,9 +482,10 @@ class MusicPD
      * @param pause 
      * @return Promise<Response>
      */
-    public function setPause(pause:Bool):Promise<Response>
+    public function pause(?pauseState:Bool):Promise<Response>
     {
-        return runCommand('pause ${displayBool(pause)}');
+        if (pauseState != null) return runCommand('pauseState ${displayBool(pauseState)}');
+        return runCommand('pause');
     }
 
     /**
